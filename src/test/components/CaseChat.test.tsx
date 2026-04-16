@@ -106,10 +106,9 @@ describe('CaseChat — error and retry', () => {
 
   it('clicking Retry re-sends the same user message and replaces the error on success', async () => {
     const user = userEvent.setup();
-    const invokeSpy = vi
-      .spyOn(supabase.functions, 'invoke')
-      .mockResolvedValueOnce({ data: null, error: new Error('offline') } as never)
-      .mockResolvedValueOnce({ data: { text: 'Here is the answer.' }, error: null } as never);
+    const invokeSpy = spyInvoke()
+      .mockReturnValueOnce(invokeNetworkError('offline') as never)
+      .mockReturnValueOnce(invokeOk('Here is the answer.') as never);
 
     render(<CaseChat enriched={enriched} policies={relevantPolicies} />);
     await user.click(screen.getByRole('button', { name: /what's overdue\?/i }));
@@ -226,7 +225,7 @@ describe('CaseChat — defensive guards', () => {
 
   it('does not submit when the input contains only whitespace', async () => {
     const user = userEvent.setup();
-    const invokeSpy = vi.spyOn(supabase.functions, 'invoke');
+    const invokeSpy = spyInvoke();
 
     render(<CaseChat enriched={enriched} policies={relevantPolicies} />);
 
@@ -239,9 +238,7 @@ describe('CaseChat — defensive guards', () => {
 
   it('ignores a second submit while a request is in flight', async () => {
     const user = userEvent.setup();
-    const invokeSpy = vi
-      .spyOn(supabase.functions, 'invoke')
-      .mockImplementation(() => new Promise(() => {}) as never);
+    const invokeSpy = spyInvoke().mockImplementation(() => new Promise(() => {}) as never);
 
     render(<CaseChat enriched={enriched} policies={relevantPolicies} />);
 
