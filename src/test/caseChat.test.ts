@@ -9,7 +9,10 @@ import { buildCaseContext, sendCaseChatMessage } from '../services/caseChat';
 import { getAllEnrichedCases, getPoliciesForCase } from '../services/cases';
 import { REFERENCE_DATE } from '../lib/constants';
 import { supabase } from '../integrations/supabase/client';
+import { spyInvoke, invokeOk, invokeReason, invokeNetworkError } from './helpers/invoke';
 import type { StructuredCaseContext, ChatMessage } from '../types/case';
+
+void supabase; // initialise client before spying on FunctionsClient
 
 afterEach(() => {
   vi.restoreAllMocks();
@@ -99,10 +102,7 @@ const stubMessages: ChatMessage[] = [{ role: 'user', content: 'hi' }];
 
 describe('sendCaseChatMessage', () => {
   it('calls ai-proxy and returns the assistant text on success', async () => {
-    const invokeSpy = vi.spyOn(supabase.functions, 'invoke').mockResolvedValueOnce({
-      data: { text: 'Hello there.' },
-      error: null,
-    } as never);
+    const invokeSpy = spyInvoke().mockReturnValueOnce(invokeOk('Hello there.') as never);
 
     const text = await sendCaseChatMessage(stubContext, stubMessages);
     expect(text).toBe('Hello there.');
@@ -120,26 +120,17 @@ describe('sendCaseChatMessage', () => {
   });
 
   it('throws when ai-proxy returns an error reason', async () => {
-    vi.spyOn(supabase.functions, 'invoke').mockResolvedValueOnce({
-      data: { error: 'boom', reason: 'non-2xx' },
-      error: null,
-    } as never);
+    spyInvoke().mockReturnValueOnce(invokeReason('non-2xx', 'boom') as never);
     await expect(sendCaseChatMessage(stubContext, stubMessages)).rejects.toThrow();
   });
 
   it('throws when ai-proxy returns empty text', async () => {
-    vi.spyOn(supabase.functions, 'invoke').mockResolvedValueOnce({
-      data: { text: '' },
-      error: null,
-    } as never);
+    spyInvoke().mockReturnValueOnce(Promise.resolve({ data: { text: '' }, error: null }) as never);
     await expect(sendCaseChatMessage(stubContext, stubMessages)).rejects.toThrow();
   });
 
   it('throws when invoke errors (network)', async () => {
-    vi.spyOn(supabase.functions, 'invoke').mockResolvedValueOnce({
-      data: null,
-      error: new Error('offline'),
-    } as never);
+    spyInvoke().mockReturnValueOnce(invokeNetworkError('offline') as never);
     await expect(sendCaseChatMessage(stubContext, stubMessages)).rejects.toThrow();
   });
 });

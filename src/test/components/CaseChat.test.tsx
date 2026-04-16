@@ -9,7 +9,10 @@ import userEvent from '@testing-library/user-event';
 import CaseChat from '../../components/ai/CaseChat';
 import { getAllEnrichedCases, getPoliciesForCase } from '../../services/cases';
 import { supabase } from '../../integrations/supabase/client';
+import { spyInvoke, invokeOk, invokeNetworkError } from '../helpers/invoke';
 import type { ChatMessage } from '../../types/case';
+
+void supabase; // initialise client before spying on FunctionsClient
 
 const enriched = getAllEnrichedCases()[0];
 const relevantPolicies = getPoliciesForCase(enriched.case_type);
@@ -24,17 +27,11 @@ afterEach(() => {
 });
 
 function mockInvokeOk(text: string) {
-  return vi.spyOn(supabase.functions, 'invoke').mockResolvedValue({
-    data: { text },
-    error: null,
-  } as never);
+  return spyInvoke().mockReturnValue(invokeOk(text) as never);
 }
 
 function mockInvokeError() {
-  return vi.spyOn(supabase.functions, 'invoke').mockResolvedValue({
-    data: null,
-    error: new Error('offline'),
-  } as never);
+  return spyInvoke().mockReturnValue(invokeNetworkError('offline') as never);
 }
 
 describe('CaseChat — State 1 (collapsed)', () => {
