@@ -90,6 +90,10 @@ Deno.serve(async (req: Request) => {
     }
   }
 
+  if (body.messages[0].role !== 'user') {
+    return jsonResponse({ error: 'First message must be a user turn' }, 400);
+  }
+
   // Rewrite the first user turn to embed the case record as JSON.
   const openaiMessages = body.messages.map((turn, i) => {
     if (i === 0 && turn.role === 'user') {

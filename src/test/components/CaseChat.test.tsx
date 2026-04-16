@@ -308,6 +308,22 @@ describe('CaseChat — defensive guards', () => {
     expect(screen.queryByRole('button', { name: /retry/i })).not.toBeInTheDocument();
   });
 
+  it('filters out turns with non-string content in stored messages', () => {
+    sessionStorage.setItem(
+      `case-chat:${enriched.case_id}`,
+      JSON.stringify([
+        { role: 'user', content: 'valid' },
+        { role: 'user', content: { oops: 'object' } },
+        { role: 'assistant', content: 'also valid' },
+      ]),
+    );
+    render(<CaseChat enriched={enriched} policies={relevantPolicies} />);
+    expect(screen.getByText('valid')).toBeInTheDocument();
+    expect(screen.getByText('also valid')).toBeInTheDocument();
+    // The malformed turn should be filtered — no React "Objects are not valid as a React child" crash
+    expect(screen.queryByText(/oops/i)).not.toBeInTheDocument();
+  });
+
   // Guard 7: retry() short-circuits while already loading — clicking Retry twice
   // only fires fetch once.
   it('ignores a second Retry click while the retried request is in flight', async () => {

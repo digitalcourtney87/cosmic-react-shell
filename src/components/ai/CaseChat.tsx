@@ -30,7 +30,13 @@ function readStoredMessages(storageKey: string): ChatMessage[] {
     const raw = sessionStorage.getItem(storageKey);
     if (!raw) return [];
     const parsed = JSON.parse(raw);
-    return Array.isArray(parsed) ? (parsed as ChatMessage[]) : [];
+    if (!Array.isArray(parsed)) return [];
+    return parsed.filter(
+      (m): m is ChatMessage =>
+        m != null &&
+        (m.role === 'user' || m.role === 'assistant') &&
+        typeof m.content === 'string',
+    );
   } catch {
     return [];
   }
@@ -61,10 +67,14 @@ export default function CaseChat({ enriched, policies }: Props) {
 
   // Persist on change
   useEffect(() => {
-    if (messages.length === 0) {
-      sessionStorage.removeItem(storageKey);
-    } else {
-      sessionStorage.setItem(storageKey, JSON.stringify(messages));
+    try {
+      if (messages.length === 0) {
+        sessionStorage.removeItem(storageKey);
+      } else {
+        sessionStorage.setItem(storageKey, JSON.stringify(messages));
+      }
+    } catch {
+      // Storage quota exceeded or blocked (private browsing, etc.). Skip silently.
     }
   }, [storageKey, messages]);
 
@@ -72,6 +82,8 @@ export default function CaseChat({ enriched, policies }: Props) {
   useEffect(() => {
     listEndRef.current?.scrollIntoView?.({ behavior: 'smooth' });
   }, [messages.length, isLoading]);
+
+  const submittingRef = useRef(false);
 
   async function sendAndAppend(history: ChatMessage[]) {
     setIsLoading(true);
@@ -96,22 +108,32 @@ export default function CaseChat({ enriched, policies }: Props) {
 
   async function submit(content: string) {
     const trimmed = content.trim();
-    if (!trimmed || isLoading || atCap) return;
+    if (!trimmed || isLoading || atCap || submittingRef.current) return;
+    submittingRef.current = true;
     setIsExpanded(true);
     setInput('');
     const next: ChatMessage[] = [...messages, { role: 'user', content: trimmed }];
     setMessages(next);
-    await sendAndAppend(next);
+    try {
+      await sendAndAppend(next);
+    } finally {
+      submittingRef.current = false;
+    }
   }
 
   async function retry() {
-    if (isLoading) return;
+    if (isLoading || submittingRef.current) return;
     // Drop the trailing error bubble; resend with the user turns that remain.
     const last = messages[messages.length - 1];
     if (!last || last.role !== 'assistant' || last.status !== 'error') return;
+    submittingRef.current = true;
     const historyWithoutError = messages.slice(0, -1);
     setMessages(historyWithoutError);
-    await sendAndAppend(historyWithoutError);
+    try {
+      await sendAndAppend(historyWithoutError);
+    } finally {
+      submittingRef.current = false;
+    }
   }
 
   function handleKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
@@ -198,6 +220,7 @@ export default function CaseChat({ enriched, policies }: Props) {
         id="case-chat-input"
         type="text"
         value={input}
+        maxLength={2000}
         onChange={e => setInput(e.target.value)}
         onKeyDown={handleKeyDown}
         onFocus={() => {

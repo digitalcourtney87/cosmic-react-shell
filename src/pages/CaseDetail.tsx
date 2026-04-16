@@ -464,7 +464,7 @@ export default function CaseDetail() {
         {/* B1 */}
         <CaseHeader enriched={enriched} />
 
-        <CaseChat enriched={enriched} policies={policies} />
+        <CaseChat key={enriched.case_id} enriched={enriched} policies={policies} />
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
 
