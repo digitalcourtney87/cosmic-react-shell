@@ -8,6 +8,7 @@ import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import CaseChat from '../../components/ai/CaseChat';
 import { getAllEnrichedCases, getPoliciesForCase } from '../../services/cases';
+import type { ChatMessage } from '../../types/case';
 
 const enriched = getAllEnrichedCases()[0];
 const relevantPolicies = getPoliciesForCase(enriched.case_type);
@@ -189,5 +190,21 @@ describe('CaseChat — session persistence', () => {
 
     rerender(<CaseChat enriched={other} policies={[]} />);
     expect(screen.queryByText('A')).not.toBeInTheDocument();
+  });
+});
+
+describe('CaseChat — turn cap', () => {
+  it('disables the input and shows a limit notice at 20 messages', () => {
+    const full: ChatMessage[] = Array.from({ length: 20 }, (_, i) => ({
+      role: i % 2 === 0 ? 'user' : 'assistant',
+      content: `msg ${i}`,
+    }));
+    sessionStorage.setItem(`case-chat:${enriched.case_id}`, JSON.stringify(full));
+
+    render(<CaseChat enriched={enriched} policies={relevantPolicies} />);
+
+    const input = screen.getByRole('textbox', { name: /ask about this case/i });
+    expect(input).toBeDisabled();
+    expect(screen.getByText(/conversation limit reached/i)).toBeInTheDocument();
   });
 });

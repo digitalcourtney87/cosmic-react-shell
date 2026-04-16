@@ -23,6 +23,8 @@ const SEED_CHIPS = [
   "What's the next action?",
 ] as const;
 
+const TURN_CAP = 20;
+
 export default function CaseChat({ enriched, policies }: Props) {
   const storageKey = `case-chat:${enriched.case_id}`;
 
@@ -102,9 +104,11 @@ export default function CaseChat({ enriched, policies }: Props) {
     }
   }
 
+  const atCap = messages.length >= TURN_CAP;
+
   async function submit(content: string) {
     const trimmed = content.trim();
-    if (!trimmed || isLoading) return;
+    if (!trimmed || isLoading || atCap) return;
     setIsExpanded(true);
     setInput('');
     const next: ChatMessage[] = [...messages, { role: 'user', content: trimmed }];
@@ -184,13 +188,19 @@ export default function CaseChat({ enriched, policies }: Props) {
         </div>
       )}
 
+      {atCap && (
+        <div className="mb-2 text-xs px-3 py-2 rounded bg-[#fff9e6] text-[#6d4000]">
+          Conversation limit reached — collapse and reopen to start a new thread.
+        </div>
+      )}
+
       <input
         id="case-chat-input"
         type="text"
         value={input}
         onChange={e => setInput(e.target.value)}
         onKeyDown={handleKeyDown}
-        disabled={isLoading}
+        disabled={isLoading || atCap}
         placeholder="e.g. What evidence is outstanding?"
         className="w-full px-3 py-2 border rounded text-sm focus:outline-none focus:ring-[3px] focus:ring-[#ffdd00] disabled:bg-gray-50"
       />
