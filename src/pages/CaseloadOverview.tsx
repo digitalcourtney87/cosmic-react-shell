@@ -1,194 +1,322 @@
-import { useMemo, useState } from "react";
-import { Switch } from "@/components/ui/switch";
-import { Label } from "@/components/ui/label";
-import {
-  calculateRiskScore,
-  deriveEvidenceStatus,
-  getAllCases,
-  getApplicablePolicies,
-  getWorkflowState,
-} from "@/services/cases";
-import { REFERENCE_DATE, daysBetween } from "@/lib/date";
-import { SEGMENTS, getSegment, type Segment } from "@/lib/segments";
-import SummaryStats from "@/components/caseload/SummaryStats";
-import Filters from "@/components/caseload/Filters";
-import OverdueBanner from "@/components/caseload/OverdueBanner";
-import CaseloadTable from "@/components/caseload/CaseloadTable";
-import {
-  ALL,
-  EMPTY_FILTERS,
-  type EnrichedCase,
-  type FilterState,
-  type SortState,
-} from "@/components/caseload/types";
+import { useState, useMemo } from 'react';
+import { useNavigate } from 'react-router-dom';
+import Header from '../components/Header';
+import { getAllEnrichedCases } from '../services/cases';
+import { EnrichedCase, RiskLevel } from '../types/case';
+import { SEGMENT_ORDER, SEGMENT_LABELS } from '../lib/constants';
 
-const SOFT_CAP = 50;
+const allCases = getAllEnrichedCases();
 
-const TYPE_LABELS: Record<string, string> = {
-  benefit_review: "Benefit review",
-  licence_application: "Licence application",
-  compliance_check: "Compliance check",
+const RISK_COLORS: Record<RiskLevel, { bg: string; text: string; label: string }> = {
+  critical: { bg: '#fde8e8', text: '#d4351c', label: 'Critical' },
+  warning:  { bg: '#fef3e2', text: '#f47738', label: 'Warning' },
+  normal:   { bg: '#e8f5e9', text: '#00703c', label: 'Normal' },
 };
 
-const STATUS_LABELS: Record<string, string> = {
-  awaiting_evidence: "Awaiting evidence",
-  under_review: "Under review",
-  pending_decision: "Pending decision",
-  escalated: "Escalated",
-  closed: "Closed",
-  case_created: "Case created",
+function RiskBadge({ level, score }: { level: RiskLevel; score: number }) {
+  const { bg, text, label } = RISK_COLORS[level];
+  return (
+    <span
+      className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-bold"
+      style={{ backgroundColor: bg, color: text }}
+    >
+      {label} {score}/10
+    </span>
+  );
+}
+
+function formatCaseType(t: string) {
+  return t.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+}
+function formatStatus(s: string) {
+  return s.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+}
+
+const STATUS_BADGE: Record<string, { bg: string; text: string }> = {
+  escalated:        { bg: '#fde8e8', text: '#d4351c' },
+  pending_decision: { bg: '#e8f0fe', text: '#1d70b8' },
+  under_review:     { bg: '#fef3e2', text: '#f47738' },
+  awaiting_evidence:{ bg: '#fff9e6', text: '#6d4000' },
+  case_created:     { bg: '#f3f2f1', text: '#505a5f' },
+  closed:           { bg: '#e8f5e9', text: '#00703c' },
 };
 
-function matchesFilters(c: EnrichedCase, f: FilterState): boolean {
-  if (f.caseType !== ALL && c.case.case_type !== f.caseType) return false;
-  if (f.assignedTo !== ALL && c.case.assigned_to !== f.assignedTo) return false;
-  if (f.status !== ALL && c.case.status !== f.status) return false;
-  return true;
-}
+type SortKey = 'risk' | 'age';
 
-function matchesAllExcept(
-  c: EnrichedCase,
-  f: FilterState,
-  except: keyof FilterState,
-): boolean {
-  if (except !== "caseType" && f.caseType !== ALL && c.case.case_type !== f.caseType) return false;
-  if (except !== "assignedTo" && f.assignedTo !== ALL && c.case.assigned_to !== f.assignedTo)
-    return false;
-  if (except !== "status" && f.status !== ALL && c.case.status !== f.status) return false;
-  return true;
-}
+export default function CaseloadOverview() {
+  const navigate = useNavigate();
 
-const CaseloadOverview = () => {
-  const enriched: EnrichedCase[] = useMemo(() => {
-    return getAllCases().map((c) => {
-      const policies = getApplicablePolicies(c);
-      const workflow = getWorkflowState(c);
-      const evidence = deriveEvidenceStatus(c, policies);
-      const risk = calculateRiskScore(c, evidence, workflow);
-      const ageDays = daysBetween(c.created_date, REFERENCE_DATE);
-      const hasOverdue = evidence.some((e) => e.status === "overdue");
-      return { case: c, evidence, risk, ageDays, hasOverdue };
-    });
-  }, []);
-
-  const [filters, setFilters] = useState<FilterState>(EMPTY_FILTERS);
-  const [sort, setSort] = useState<SortState>({ key: "risk", dir: "desc" });
+  const [sortKey, setSortKey] = useState<SortKey>('risk');
+  const [filterType, setFilterType] = useState('');
+  const [filterStatus, setFilterStatus] = useState('');
+  const [filterAssigned, setFilterAssigned] = useState('');
   const [groupBySegment, setGroupBySegment] = useState(false);
 
-  const filtered = useMemo(
-    () => enriched.filter((c) => matchesFilters(c, filters)),
-    [enriched, filters],
-  );
+  const distinctTypes = useMemo(() => [...new Set(allCases.map(c => c.case_type))].sort(), []);
+  const distinctStatuses = useMemo(() => [...new Set(allCases.map(c => c.status))].sort(), []);
+  const distinctAssigned = useMemo(() => [...new Set(allCases.map(c => c.assigned_to))].sort(), []);
 
-  const sortedFiltered = useMemo(() => {
-    const copy = [...filtered];
-    const dir = sort.dir === "asc" ? 1 : -1;
-    copy.sort((a, b) => {
-      const av = sort.key === "risk" ? a.risk.score : a.ageDays;
-      const bv = sort.key === "risk" ? b.risk.score : b.ageDays;
-      const diff = av - bv;
-      if (diff !== 0) return diff * dir;
-      return a.case.case_id.localeCompare(b.case.case_id);
-    });
-    return copy.slice(0, SOFT_CAP);
-  }, [filtered, sort]);
+  const filtered = useMemo(() => {
+    return allCases.filter(c =>
+      (!filterType || c.case_type === filterType) &&
+      (!filterStatus || c.status === filterStatus) &&
+      (!filterAssigned || c.assigned_to === filterAssigned)
+    );
+  }, [filterType, filterStatus, filterAssigned]);
 
-  const overdueAll = useMemo(() => enriched.filter((c) => c.hasOverdue), [enriched]);
-  const overdueVisible = useMemo(
-    () => overdueAll.filter((c) => matchesFilters(c, filters)),
-    [overdueAll, filters],
-  );
-  const overdueHidden = overdueAll.length - overdueVisible.length;
+  const sorted = useMemo(() => {
+    return [...filtered].sort((a, b) =>
+      sortKey === 'risk'
+        ? b.riskScore.score - a.riskScore.score
+        : b.ageInDays - a.ageInDays
+    );
+  }, [filtered, sortKey]);
 
-  const filterOptions = useMemo(() => {
-    const caseTypes = Array.from(new Set(enriched.map((c) => c.case.case_type))).sort();
-    const assignees = Array.from(new Set(enriched.map((c) => c.case.assigned_to))).sort();
-    const statuses = Array.from(new Set(enriched.map((c) => c.case.status))).sort();
-    return {
-      caseTypes: caseTypes.map((v) => ({ value: v, label: TYPE_LABELS[v] ?? v })),
-      assignees: assignees.map((v) => ({ value: v, label: v })),
-      statuses: statuses.map((v) => ({ value: v, label: STATUS_LABELS[v] ?? v })),
-    };
-  }, [enriched]);
+  // Overdue cases hidden by current filter
+  const overdueCases = allCases.filter(c => c.evidenceItems.some(e => e.status === 'overdue'));
+  const hiddenOverdueCases = overdueCases.filter(c => !filtered.includes(c));
 
-  const handleShowOverdue = () => {
-    const hiddenOverdue = overdueAll.filter((c) => !matchesFilters(c, filters));
-    const next: FilterState = { ...filters };
-    (Object.keys(filters) as Array<keyof FilterState>).forEach((dim) => {
-      if (filters[dim] === ALL) return;
-      const wouldUnhide = hiddenOverdue.some((c) => matchesAllExcept(c, filters, dim));
-      if (wouldUnhide) next[dim] = ALL;
-    });
-    setFilters(next);
-  };
+  function clearObscuringFilters() {
+    const hiddenTypes = new Set(hiddenOverdueCases.map(c => c.case_type));
+    const hiddenStatuses = new Set(hiddenOverdueCases.map(c => c.status));
+    const hiddenAssigned = new Set(hiddenOverdueCases.map(c => c.assigned_to));
+    if (filterType && hiddenTypes.has(filterType)) setFilterType('');
+    if (filterStatus && hiddenStatuses.has(filterStatus)) setFilterStatus('');
+    if (filterAssigned && hiddenAssigned.has(filterAssigned)) setFilterAssigned('');
+  }
 
-  const grouped: { segment: Segment; rows: EnrichedCase[] }[] | null = useMemo(() => {
-    if (!groupBySegment) return null;
-    const buckets = new Map<Segment, EnrichedCase[]>();
-    SEGMENTS.forEach((s) => buckets.set(s, []));
-    sortedFiltered.forEach((c) => {
-      const seg = getSegment(c.case);
-      buckets.get(seg)?.push(c);
-    });
-    return SEGMENTS.map((segment) => ({ segment, rows: buckets.get(segment) ?? [] }));
-  }, [groupBySegment, sortedFiltered]);
+  // Summary tiles (based on filtered set)
+  const totalCases = filtered.length;
+  const awaitingEvidence = filtered.filter(c => c.status === 'awaiting_evidence').length;
+  const overdueCasesFiltered = filtered.filter(c => c.evidenceItems.some(e => e.status === 'overdue')).length;
+  const avgAge = filtered.length > 0
+    ? Math.round(filtered.reduce((sum, c) => sum + c.ageInDays, 0) / filtered.length)
+    : 0;
+
+  function handleRowClick(caseId: string) {
+    navigate(`/case/${caseId}`);
+  }
+
+  function renderTable(rows: EnrichedCase[]) {
+    return (
+      <table className="w-full text-left text-sm">
+        <thead>
+          <tr style={{ backgroundColor: '#f3f2f1' }}>
+            <th className="px-4 py-3 font-semibold text-xs uppercase text-gray-600 border-b sticky top-0 bg-[#f3f2f1]">Case ID</th>
+            <th className="px-4 py-3 font-semibold text-xs uppercase text-gray-600 border-b sticky top-0 bg-[#f3f2f1]">Applicant</th>
+            <th className="px-4 py-3 font-semibold text-xs uppercase text-gray-600 border-b sticky top-0 bg-[#f3f2f1]">Type</th>
+            <th className="px-4 py-3 font-semibold text-xs uppercase text-gray-600 border-b sticky top-0 bg-[#f3f2f1]">Status</th>
+            <th
+              className="px-4 py-3 font-semibold text-xs uppercase text-gray-600 border-b sticky top-0 bg-[#f3f2f1] cursor-pointer hover:underline select-none"
+              onClick={() => setSortKey('age')}
+            >
+              Age{sortKey === 'age' ? ' ▼' : ''}
+            </th>
+            <th
+              className="px-4 py-3 font-semibold text-xs uppercase text-gray-600 border-b sticky top-0 bg-[#f3f2f1] cursor-pointer hover:underline select-none"
+              onClick={() => setSortKey('risk')}
+            >
+              Risk{sortKey === 'risk' ? ' ▼' : ''}
+            </th>
+            <th className="px-4 py-3 border-b sticky top-0 bg-[#f3f2f1]" />
+          </tr>
+        </thead>
+        <tbody>
+          {rows.length === 0 && (
+            <tr>
+              <td colSpan={7} className="px-4 py-8 text-center text-gray-500">No cases match the current filters.</td>
+            </tr>
+          )}
+          {rows.map(c => {
+            const statusStyle = STATUS_BADGE[c.status] ?? { bg: '#f3f2f1', text: '#505a5f' };
+            return (
+              <tr
+                key={c.case_id}
+                tabIndex={0}
+                onClick={() => handleRowClick(c.case_id)}
+                onKeyDown={e => e.key === 'Enter' && handleRowClick(c.case_id)}
+                className="hover:bg-gray-50 cursor-pointer border-b focus:outline-none focus:ring-[3px] focus:ring-inset"
+                style={{
+                  borderLeft: `5px solid ${RISK_COLORS[c.riskScore.level].text}`,
+                  focusRingColor: '#ffdd00',
+                }}
+              >
+                <td className="px-4 py-3 font-mono font-bold text-xs">{c.case_id}</td>
+                <td className="px-4 py-3">{c.applicant.name}</td>
+                <td className="px-4 py-3 italic text-gray-600">{formatCaseType(c.case_type)}</td>
+                <td className="px-4 py-3">
+                  <span
+                    className="inline-block px-2 py-0.5 rounded text-xs font-medium"
+                    style={{ backgroundColor: statusStyle.bg, color: statusStyle.text }}
+                  >
+                    {formatStatus(c.status)}
+                  </span>
+                </td>
+                <td className="px-4 py-3 text-gray-600">{c.ageInDays}d</td>
+                <td className="px-4 py-3"><RiskBadge level={c.riskScore.level} score={c.riskScore.score} /></td>
+                <td className="px-4 py-3 text-right" style={{ color: '#1d70b8' }}>View →</td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+    );
+  }
+
+  function renderGrouped() {
+    const segments = [...SEGMENT_ORDER];
+    const grouped: Record<string, EnrichedCase[]> = {};
+    const other: EnrichedCase[] = [];
+
+    for (const s of segments) grouped[s] = [];
+    for (const c of sorted) {
+      if (segments.includes(c.status as any)) {
+        grouped[c.status].push(c);
+      } else {
+        other.push(c);
+      }
+    }
+
+    return (
+      <>
+        {segments.map(seg => (
+          <div key={seg} className="mb-4">
+            <div
+              className="px-4 py-2 text-sm font-bold text-white flex items-center gap-2"
+              style={{ backgroundColor: '#505a5f' }}
+            >
+              {SEGMENT_LABELS[seg]}
+              <span className="ml-1 text-xs font-normal opacity-75">({grouped[seg].length})</span>
+            </div>
+            {renderTable(grouped[seg])}
+          </div>
+        ))}
+        {other.length > 0 && (
+          <div className="mb-4">
+            <div className="px-4 py-2 text-sm font-bold text-white" style={{ backgroundColor: '#505a5f' }}>
+              Other <span className="text-xs font-normal opacity-75">({other.length})</span>
+            </div>
+            {renderTable(other)}
+          </div>
+        )}
+      </>
+    );
+  }
 
   return (
-    <section className="space-y-6">
-      <header className="flex flex-wrap items-end justify-between gap-4">
-        <div>
-          <h1 className="text-3xl font-bold tracking-tight">Caseload</h1>
-          <p className="mt-1 text-gds-midgrey">
-            {filtered.length} of {enriched.length} {enriched.length === 1 ? "case" : "cases"} —
-            reference date {REFERENCE_DATE.toISOString().slice(0, 10)}.
-          </p>
-        </div>
-        <div className="flex items-center gap-2">
-          <Switch
-            id="group-by-segment"
-            checked={groupBySegment}
-            onCheckedChange={setGroupBySegment}
-          />
-          <Label htmlFor="group-by-segment" className="cursor-pointer text-sm font-medium">
-            Group by segment
-          </Label>
-        </div>
-      </header>
+    <div className="min-h-screen" style={{ backgroundColor: '#f3f2f1', fontFamily: 'Inter, sans-serif' }}>
+      <Header />
 
-      <SummaryStats cases={filtered} />
+      <main className="mx-auto max-w-screen-xl px-6 py-8 space-y-6">
 
-      <Filters
-        filters={filters}
-        onChange={setFilters}
-        caseTypes={filterOptions.caseTypes}
-        assignees={filterOptions.assignees}
-        statuses={filterOptions.statuses}
-      />
-
-      <OverdueBanner hiddenCount={overdueHidden} onShow={handleShowOverdue} />
-
-      {grouped ? (
-        <div className="space-y-6">
-          {grouped.map(({ segment, rows }) => (
-            <div key={segment} className="space-y-2">
-              <h2 className="text-sm font-semibold uppercase tracking-wide text-gds-midgrey">
-                {segment} <span className="font-mono opacity-70">({rows.length})</span>
-              </h2>
-              {rows.length === 0 ? (
-                <div className="border border-dashed border-gds-lightgrey rounded p-4 text-sm text-gds-midgrey">
-                  No cases in this segment.
-                </div>
-              ) : (
-                <CaseloadTable rows={rows} sort={sort} onSortChange={setSort} />
-              )}
+        {/* Summary tiles */}
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+          {[
+            { label: 'Total Cases', value: totalCases, color: '#0b0c0c' },
+            { label: 'Awaiting Evidence', value: awaitingEvidence, color: '#f47738' },
+            { label: 'Overdue Cases', value: overdueCasesFiltered, color: '#d4351c' },
+            { label: 'Avg Case Age (days)', value: avgAge, color: '#1d70b8' },
+          ].map(tile => (
+            <div key={tile.label} className="bg-white rounded shadow-sm px-5 py-4">
+              <div className="text-3xl font-bold" style={{ color: tile.color }}>{tile.value}</div>
+              <div className="text-xs text-gray-500 mt-1 uppercase tracking-wide">{tile.label}</div>
             </div>
           ))}
         </div>
-      ) : (
-        <CaseloadTable rows={sortedFiltered} sort={sort} onSortChange={setSort} />
-      )}
-    </section>
-  );
-};
 
-export default CaseloadOverview;
+        {/* Overdue hidden warning banner */}
+        {hiddenOverdueCases.length > 0 && (
+          <div
+            className="flex items-center justify-between px-4 py-3 rounded text-sm font-medium"
+            style={{ backgroundColor: '#fef3e2', border: '2px solid #f47738', color: '#6d4000' }}
+          >
+            <span>
+              {hiddenOverdueCases.length} overdue case{hiddenOverdueCases.length > 1 ? 's' : ''} hidden by current filter
+            </span>
+            <button
+              onClick={clearObscuringFilters}
+              className="underline font-bold focus:outline-none focus:ring-[3px] focus:ring-[#ffdd00] rounded px-1"
+              style={{ color: '#f47738' }}
+            >
+              Show
+            </button>
+          </div>
+        )}
+
+        {/* Filters + group toggle */}
+        <div className="bg-white rounded shadow-sm px-5 py-4 flex flex-wrap items-end gap-4">
+          <div>
+            <label className="block text-xs font-semibold uppercase text-gray-500 mb-1">Case Type</label>
+            <select
+              value={filterType}
+              onChange={e => setFilterType(e.target.value)}
+              className="border rounded px-3 py-1.5 text-sm focus:outline-none focus:ring-[3px] focus:ring-[#ffdd00]"
+            >
+              <option value="">All types</option>
+              {distinctTypes.map(t => <option key={t} value={t}>{formatCaseType(t)}</option>)}
+            </select>
+          </div>
+          <div>
+            <label className="block text-xs font-semibold uppercase text-gray-500 mb-1">Status</label>
+            <select
+              value={filterStatus}
+              onChange={e => setFilterStatus(e.target.value)}
+              className="border rounded px-3 py-1.5 text-sm focus:outline-none focus:ring-[3px] focus:ring-[#ffdd00]"
+            >
+              <option value="">All statuses</option>
+              {distinctStatuses.map(s => <option key={s} value={s}>{formatStatus(s)}</option>)}
+            </select>
+          </div>
+          <div>
+            <label className="block text-xs font-semibold uppercase text-gray-500 mb-1">Assigned to</label>
+            <select
+              value={filterAssigned}
+              onChange={e => setFilterAssigned(e.target.value)}
+              className="border rounded px-3 py-1.5 text-sm focus:outline-none focus:ring-[3px] focus:ring-[#ffdd00]"
+            >
+              <option value="">All caseworkers</option>
+              {distinctAssigned.map(a => <option key={a} value={a}>{a}</option>)}
+            </select>
+          </div>
+          <div className="ml-auto flex items-center gap-2">
+            <label className="text-sm font-medium text-gray-700 cursor-pointer select-none" htmlFor="group-toggle">
+              Group by segment
+            </label>
+            <button
+              id="group-toggle"
+              role="switch"
+              aria-checked={groupBySegment}
+              onClick={() => setGroupBySegment(g => !g)}
+              className="relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-[3px] focus:ring-[#ffdd00]"
+              style={{ backgroundColor: groupBySegment ? '#1d70b8' : '#ccc' }}
+            >
+              <span
+                className="inline-block h-4 w-4 transform rounded-full bg-white transition-transform"
+                style={{ transform: groupBySegment ? 'translateX(22px)' : 'translateX(4px)' }}
+              />
+            </button>
+          </div>
+        </div>
+
+        {/* Case table */}
+        <div className="bg-white rounded shadow-sm overflow-hidden">
+          <div className="px-5 py-3 border-b flex items-center justify-between">
+            <h2 className="font-bold text-gray-800">Your Caseload</h2>
+            <div className="flex gap-2 text-xs">
+              <span className="px-2 py-1 rounded font-bold" style={{ backgroundColor: '#fde8e8', color: '#d4351c' }}>
+                {allCases.filter(c => c.riskScore.level === 'critical').length} Critical
+              </span>
+              <span className="px-2 py-1 rounded font-bold" style={{ backgroundColor: '#fef3e2', color: '#f47738' }}>
+                {allCases.filter(c => c.riskScore.level === 'warning').length} Warning
+              </span>
+            </div>
+          </div>
+          <div className="overflow-auto max-h-[60vh]">
+            {groupBySegment ? renderGrouped() : renderTable(sorted)}
+          </div>
+        </div>
+
+      </main>
+    </div>
+  );
+}

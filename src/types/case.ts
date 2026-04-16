@@ -1,4 +1,4 @@
-export type CaseType = "benefit_review" | "licence_application" | "compliance_check";
+// ── Fixture types ────────────────────────────────────────────────────────────
 
 export interface Applicant {
   name: string;
@@ -14,7 +14,7 @@ export interface TimelineEvent {
 
 export interface Case {
   case_id: string;
-  case_type: CaseType;
+  case_type: string;
   status: string;
   applicant: Applicant;
   assigned_to: string;
@@ -31,34 +31,59 @@ export interface PolicyExtract {
   body: string;
 }
 
-export interface EscalationThreshold {
-  reminder_days?: number;
+export interface EscalationThresholds {
+  reminder_days: number;
   escalation_days: number;
 }
 
-export interface WorkflowState {
+export interface WorkflowStateEntry {
   state: string;
-  case_type: CaseType;
   label: string;
   description: string;
   allowed_transitions: string[];
   required_actions: string[];
-  escalation_thresholds?: EscalationThreshold;
+  escalation_thresholds?: EscalationThresholds;
 }
 
-export type EvidenceStatus = "received" | "outstanding" | "overdue";
+export interface WorkflowData {
+  case_types: Record<string, { states: WorkflowStateEntry[] }>;
+}
+
+// ── Page index types ─────────────────────────────────────────────────────────
+
+export interface PageRef {
+  page: string;
+  url_pattern: string;
+  purpose: string;
+}
+
+export interface ActionEntry {
+  action_id: string;
+  label: string;
+  triggered_at_state: string;
+  policy_refs: string[];
+  pages: PageRef[];
+  urgency_trigger_days?: number;
+}
+
+export interface PageIndexEntry {
+  case_type: string;
+  actions: ActionEntry[];
+}
+
+// ── Derived types ────────────────────────────────────────────────────────────
+
+export type EvidenceStatus = 'received' | 'outstanding' | 'overdue';
 
 export interface EvidenceItem {
   requirement: string;
-  policy_id: string;
   status: EvidenceStatus;
-  days_elapsed: number;
-  threshold_days: number;
-  requested_date?: string;
-  received_date?: string;
+  policyId: string;
+  elapsedDays: number | null;
+  thresholdDays: number | null;
 }
 
-export type RiskLevel = "normal" | "warning" | "critical";
+export type RiskLevel = 'normal' | 'warning' | 'critical';
 
 export interface RiskScore {
   score: number;
@@ -66,11 +91,21 @@ export interface RiskScore {
   factors: string[];
 }
 
-export type ActionSeverity = "info" | "warning" | "critical";
+export type ActionSeverity = 'info' | 'warning' | 'critical';
 
-export interface Action {
-  action_id: string;
+export interface NextAction {
+  id: string;
   label: string;
   severity: ActionSeverity;
-  due_in_days?: number;
+  dueInDays: number | null;
+}
+
+// ── Enriched case (derived fields attached) ──────────────────────────────────
+
+export interface EnrichedCase extends Case {
+  evidenceItems: EvidenceItem[];
+  riskScore: RiskScore;
+  nextActions: NextAction[];
+  workflowState: WorkflowStateEntry | null;
+  ageInDays: number;
 }
