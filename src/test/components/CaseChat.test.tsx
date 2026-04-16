@@ -1,6 +1,6 @@
 /**
  * CaseChat component tests.
- * Network stubbed with vi.stubGlobal('fetch', ...).
+ * Network stubbed by mocking supabase.functions.invoke.
  */
 
 import { describe, it, expect, vi, afterEach, beforeEach } from 'vitest';
@@ -8,7 +8,11 @@ import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import CaseChat from '../../components/ai/CaseChat';
 import { getAllEnrichedCases, getPoliciesForCase } from '../../services/cases';
+import { supabase } from '../../integrations/supabase/client';
+import { spyInvoke, invokeOk, invokeNetworkError } from '../helpers/invoke';
 import type { ChatMessage } from '../../types/case';
+
+void supabase; // initialise client before spying on FunctionsClient
 
 const enriched = getAllEnrichedCases()[0];
 const relevantPolicies = getPoliciesForCase(enriched.case_type);
@@ -18,9 +22,17 @@ beforeEach(() => {
 });
 
 afterEach(() => {
-  vi.unstubAllGlobals();
+  vi.restoreAllMocks();
   sessionStorage.clear();
 });
+
+function mockInvokeOk(text: string) {
+  return spyInvoke().mockReturnValue(invokeOk(text) as never);
+}
+
+function mockInvokeError() {
+  return spyInvoke().mockReturnValue(invokeNetworkError('offline') as never);
+}
 
 describe('CaseChat — State 1 (collapsed)', () => {
   it('renders the collapsed trigger with input and four chips', () => {
@@ -38,37 +50,26 @@ describe('CaseChat — State 1 (collapsed)', () => {
 });
 
 describe('CaseChat — chip submit → assistant reply', () => {
-  it('clicking a chip expands, renders user bubble, POSTs to edge function, renders assistant bubble', async () => {
+  it('clicking a chip expands, renders user bubble, calls ai-proxy, renders assistant bubble', async () => {
     const user = userEvent.setup();
-    const fetchMock = vi.fn().mockResolvedValue(
-      new Response(JSON.stringify({ choices: [{ message: { content: 'Three items are outstanding.' } }] }), {
-        status: 200,
-        headers: { 'Content-Type': 'application/json' },
-      }),
-    );
-    vi.stubGlobal('fetch', fetchMock);
-    vi.stubEnv('VITE_OPENAI_API_KEY', 'sk-test');
+    const invokeSpy = mockInvokeOk('Three items are outstanding.');
 
     render(<CaseChat enriched={enriched} policies={relevantPolicies} />);
 
     await user.click(screen.getByRole('button', { name: /what's overdue\?/i }));
 
-    // user bubble appears immediately
     expect(screen.getByText("What's overdue?")).toBeInTheDocument();
 
-    // fetch was called once with the expected body
-    expect(fetchMock).toHaveBeenCalledTimes(1);
-    const [url, init] = fetchMock.mock.calls[0];
-    expect(url).toBe('https://api.openai.com/v1/chat/completions');
-    const body = JSON.parse(init.body as string);
-    expect(body.model).toBe('gpt-4o-mini');
+    await waitFor(() => expect(invokeSpy).toHaveBeenCalledTimes(1));
+    const [name, opts] = invokeSpy.mock.calls[0];
+    expect(name).toBe('ai-proxy');
+    const body = (opts as { body: { messages: { role: string; content: string }[] } }).body;
     expect(body.messages[0].role).toBe('system');
     const last = body.messages[body.messages.length - 1];
     expect(last.role).toBe('user');
     expect(last.content).toContain("What's overdue?");
     expect(last.content).toContain(enriched.case_id);
 
-    // assistant bubble arrives after fetch resolves
     await waitFor(() =>
       expect(screen.getByText('Three items are outstanding.')).toBeInTheDocument(),
     );
@@ -76,13 +77,7 @@ describe('CaseChat — chip submit → assistant reply', () => {
 
   it('typing in the input and pressing Enter submits the message', async () => {
     const user = userEvent.setup();
-    vi.stubGlobal(
-      'fetch',
-      vi.fn().mockResolvedValue(
-        new Response(JSON.stringify({ choices: [{ message: { content: 'OK.' } }] }), { status: 200 }),
-      ),
-    );
-    vi.stubEnv('VITE_OPENAI_API_KEY', 'sk-test');
+    mockInvokeOk('OK.');
 
     render(<CaseChat enriched={enriched} policies={relevantPolicies} />);
 
@@ -96,10 +91,9 @@ describe('CaseChat — chip submit → assistant reply', () => {
 });
 
 describe('CaseChat — error and retry', () => {
-  it('renders an error bubble with a Retry button on fetch failure', async () => {
+  it('renders an error bubble with a Retry button on invoke failure', async () => {
     const user = userEvent.setup();
-    vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new Error('offline')));
-    vi.stubEnv('VITE_OPENAI_API_KEY', 'sk-test');
+    mockInvokeError();
 
     render(<CaseChat enriched={enriched} policies={relevantPolicies} />);
     await user.click(screen.getByRole('button', { name: /what's overdue\?/i }));
@@ -112,14 +106,9 @@ describe('CaseChat — error and retry', () => {
 
   it('clicking Retry re-sends the same user message and replaces the error on success', async () => {
     const user = userEvent.setup();
-    const fetchMock = vi
-      .fn()
-      .mockRejectedValueOnce(new Error('offline'))
-      .mockResolvedValueOnce(
-        new Response(JSON.stringify({ choices: [{ message: { content: 'Here is the answer.' } }] }), { status: 200 }),
-      );
-    vi.stubGlobal('fetch', fetchMock);
-    vi.stubEnv('VITE_OPENAI_API_KEY', 'sk-test');
+    const invokeSpy = spyInvoke()
+      .mockReturnValueOnce(invokeNetworkError('offline') as never)
+      .mockReturnValueOnce(invokeOk('Here is the answer.') as never);
 
     render(<CaseChat enriched={enriched} policies={relevantPolicies} />);
     await user.click(screen.getByRole('button', { name: /what's overdue\?/i }));
@@ -134,20 +123,14 @@ describe('CaseChat — error and retry', () => {
       expect(screen.getByText('Here is the answer.')).toBeInTheDocument(),
     );
     expect(screen.queryByText(/couldn't reach the assistant/i)).not.toBeInTheDocument();
-    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(invokeSpy).toHaveBeenCalledTimes(2);
   });
 });
 
 describe('CaseChat — session persistence', () => {
   it('persists messages to sessionStorage keyed by case_id', async () => {
     const user = userEvent.setup();
-    vi.stubGlobal(
-      'fetch',
-      vi.fn().mockResolvedValue(
-        new Response(JSON.stringify({ choices: [{ message: { content: 'Persisted reply.' } }] }), { status: 200 }),
-      ),
-    );
-    vi.stubEnv('VITE_OPENAI_API_KEY', 'sk-test');
+    mockInvokeOk('Persisted reply.');
 
     render(<CaseChat enriched={enriched} policies={relevantPolicies} />);
     await user.click(screen.getByRole('button', { name: /summarise this case/i }));
@@ -210,16 +193,12 @@ describe('CaseChat — turn cap', () => {
 });
 
 describe('CaseChat — defensive guards', () => {
-  // Guard 1: readStoredMessages returns [] when sessionStorage key is missing.
   it('mounts in collapsed State 1 when sessionStorage is empty (no conversation log)', () => {
     render(<CaseChat enriched={enriched} policies={relevantPolicies} />);
-    // No role="log" should be in the DOM when there are no messages.
     expect(screen.queryByRole('log')).not.toBeInTheDocument();
-    // Chips remain visible.
     expect(screen.getByRole('button', { name: /summarise this case/i })).toBeInTheDocument();
   });
 
-  // Guard 2: readStoredMessages returns [] when stored value is not a JSON array.
   it('ignores non-array JSON in sessionStorage and mounts in State 1', () => {
     sessionStorage.setItem(
       `case-chat:${enriched.case_id}`,
@@ -232,7 +211,6 @@ describe('CaseChat — defensive guards', () => {
     expect(screen.getByRole('button', { name: /summarise this case/i })).toBeInTheDocument();
   });
 
-  // Guard 3: readStoredMessages swallows JSON.parse errors on corrupted data.
   it('ignores corrupted (unparseable) sessionStorage JSON and mounts in State 1', () => {
     sessionStorage.setItem(
       `case-chat:${enriched.case_id}`,
@@ -245,51 +223,35 @@ describe('CaseChat — defensive guards', () => {
     expect(screen.getByRole('button', { name: /summarise this case/i })).toBeInTheDocument();
   });
 
-  // Guard 4: submit() early-returns on empty/whitespace-only content.
   it('does not submit when the input contains only whitespace', async () => {
     const user = userEvent.setup();
-    const fetchMock = vi.fn();
-    vi.stubGlobal('fetch', fetchMock);
-    vi.stubEnv('VITE_OPENAI_API_KEY', 'sk-test');
+    const invokeSpy = spyInvoke();
 
     render(<CaseChat enriched={enriched} policies={relevantPolicies} />);
 
     const input = screen.getByRole('textbox', { name: /ask about this case/i });
     await user.type(input, '   {Enter}');
 
-    // fetch must never have been called.
-    expect(fetchMock).not.toHaveBeenCalled();
-    // No log region appeared — still in State 1.
+    expect(invokeSpy).not.toHaveBeenCalled();
     expect(screen.queryByRole('log')).not.toBeInTheDocument();
   });
 
-  // Guard 5: submit() short-circuits while isLoading so chips/Enter cannot double-submit.
   it('ignores a second submit while a request is in flight', async () => {
     const user = userEvent.setup();
-    // A fetch that never resolves — keeps the component in isLoading=true.
-    const fetchMock = vi.fn().mockImplementation(() => new Promise(() => {}));
-    vi.stubGlobal('fetch', fetchMock);
-    vi.stubEnv('VITE_OPENAI_API_KEY', 'sk-test');
+    const invokeSpy = spyInvoke().mockImplementation(() => new Promise(() => {}) as never);
 
     render(<CaseChat enriched={enriched} policies={relevantPolicies} />);
 
-    // First chip click → enters loading state.
     await user.click(screen.getByRole('button', { name: /summarise this case/i }));
 
-    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(invokeSpy).toHaveBeenCalledTimes(1));
 
-    // Attempt a second submit via typing + Enter. Input is disabled during
-    // loading so userEvent.type is a no-op; we dispatch a keyDown directly
-    // to confirm the guard inside submit() short-circuits regardless.
     const input = screen.getByRole('textbox', { name: /ask about this case/i });
     await user.type(input, 'second question{Enter}');
 
-    // fetch must still have been called exactly once.
-    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(invokeSpy).toHaveBeenCalledTimes(1);
   });
 
-  // Guard 6: retry() no-op when last message is not an error — observable outcome
-  // is that no Retry button is rendered.
   it('does not render a Retry button when the last assistant message succeeded', () => {
     sessionStorage.setItem(
       `case-chat:${enriched.case_id}`,
@@ -318,12 +280,9 @@ describe('CaseChat — defensive guards', () => {
     render(<CaseChat enriched={enriched} policies={relevantPolicies} />);
     expect(screen.getByText('valid')).toBeInTheDocument();
     expect(screen.getByText('also valid')).toBeInTheDocument();
-    // The malformed turn should be filtered — no React "Objects are not valid as a React child" crash
     expect(screen.queryByText(/oops/i)).not.toBeInTheDocument();
   });
 
-  // Guard 7: retry() short-circuits while already loading — clicking Retry twice
-  // only fires fetch once.
   it('ignores a second Retry click while the retried request is in flight', async () => {
     const user = userEvent.setup();
     sessionStorage.setItem(
@@ -334,28 +293,21 @@ describe('CaseChat — defensive guards', () => {
       ]),
     );
 
-    // Never-resolving fetch keeps us in isLoading=true after the first retry.
-    const fetchMock = vi.fn().mockImplementation(() => new Promise(() => {}));
-    vi.stubGlobal('fetch', fetchMock);
-    vi.stubEnv('VITE_OPENAI_API_KEY', 'sk-test');
+    const invokeSpy = spyInvoke().mockImplementation(() => new Promise(() => {}) as never);
 
     render(<CaseChat enriched={enriched} policies={relevantPolicies} />);
 
     const retryButton = screen.getByRole('button', { name: /retry/i });
     await user.click(retryButton);
 
-    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(invokeSpy).toHaveBeenCalledTimes(1));
 
-    // The error bubble (and its Retry button) was removed by the first click —
-    // retry() sliced it off before sending. A second click therefore has no
-    // Retry button to press; if a stale reference remained, it would still be
-    // short-circuited by the isLoading guard. Either way: fetch stays at 1.
     const stillRetry = screen.queryByRole('button', { name: /retry/i });
     if (stillRetry) {
       await user.click(stillRetry);
     }
 
-    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(invokeSpy).toHaveBeenCalledTimes(1);
   });
 });
 
@@ -372,17 +324,14 @@ describe('CaseChat — collapse', () => {
 
     render(<CaseChat enriched={enriched} policies={relevantPolicies} />);
 
-    // State 2 on mount — messages visible, Collapse button shown
     expect(screen.getByText('hello')).toBeInTheDocument();
     const collapseBtn = screen.getByRole('button', { name: /collapse/i });
 
     await user.click(collapseBtn);
 
-    // Conversation hidden, chips visible again (State 1 layout)
     expect(screen.queryByText('hello')).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: /summarise this case/i })).toBeInTheDocument();
 
-    // sessionStorage still has the messages
     const stored = sessionStorage.getItem(`case-chat:${enriched.case_id}`);
     expect(stored).not.toBeNull();
     expect(JSON.parse(stored as string).length).toBe(2);
