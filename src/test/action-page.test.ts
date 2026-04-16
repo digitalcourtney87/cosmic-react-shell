@@ -12,7 +12,10 @@ import {
 } from '../lib/action';
 import { getEvidenceAdvice } from '../services/ai';
 import { supabase } from '../integrations/supabase/client';
+import { spyInvoke, invokeOk, invokeReason, invokeNetworkError } from './helpers/invoke';
 import type { EvidenceAdviceInputs, ActionEntry } from '../types/case';
+
+void supabase; // initialise client before spying on FunctionsClient
 
 afterEach(() => {
   vi.restoreAllMocks();
@@ -130,10 +133,7 @@ describe('getEvidenceAdvice', () => {
 
   it('returns llm status when ai-proxy returns text', async () => {
     const validText = 'CASE-2026-00042 — Send 28-day reminder. income statement remains outstanding after 30 days. Chase it citing POL-BR-003.';
-    vi.spyOn(supabase.functions, 'invoke').mockResolvedValueOnce({
-      data: { text: validText },
-      error: null,
-    } as never);
+    spyInvoke().mockReturnValueOnce(invokeOk(validText) as never);
 
     const result = await getEvidenceAdvice(inputs);
     expect(result.status).toBe('llm');
@@ -141,10 +141,7 @@ describe('getEvidenceAdvice', () => {
   });
 
   it('falls back with reason no-key when ai-proxy reports the secret is missing', async () => {
-    vi.spyOn(supabase.functions, 'invoke').mockResolvedValueOnce({
-      data: { error: 'OPENAI_API_KEY is not configured', reason: 'no-key' },
-      error: null,
-    } as never);
+    spyInvoke().mockReturnValueOnce(invokeReason('no-key', 'OPENAI_API_KEY is not configured') as never);
 
     const result = await getEvidenceAdvice(inputs);
     expect(result.status).toBe('fallback');
@@ -155,10 +152,7 @@ describe('getEvidenceAdvice', () => {
   });
 
   it('falls back with reason network-error when invoke errors out', async () => {
-    vi.spyOn(supabase.functions, 'invoke').mockResolvedValueOnce({
-      data: null,
-      error: new Error('network down'),
-    } as never);
+    spyInvoke().mockReturnValueOnce(invokeNetworkError('network down') as never);
 
     const result = await getEvidenceAdvice(inputs);
     expect(result.status).toBe('fallback');

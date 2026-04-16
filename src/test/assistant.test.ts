@@ -15,7 +15,10 @@ import {
   getPriorityInsight,
 } from '../services/ai';
 import { supabase } from '../integrations/supabase/client';
+import { spyInvoke, invokeOk, invokeReason, invokeNetworkError } from './helpers/invoke';
 import type { PriorityInsightInputs } from '../types/case';
+
+void supabase; // ensure client is initialised before tests spy on FunctionsClient
 
 afterEach(() => {
   vi.restoreAllMocks();
@@ -98,10 +101,7 @@ describe('getPriorityInsight', () => {
     const fallbackText = composeFallback(inputs);
 
     // Case A: server reports no-key → fallback
-    vi.spyOn(supabase.functions, 'invoke').mockResolvedValueOnce({
-      data: { error: 'OPENAI_API_KEY is not configured', reason: 'no-key' },
-      error: null,
-    } as never);
+    spyInvoke().mockReturnValueOnce(invokeReason('no-key', 'OPENAI_API_KEY is not configured') as never);
     const noKeyResult = await getPriorityInsight(inputs);
     expect(noKeyResult.status).toBe('fallback');
     if (noKeyResult.status === 'fallback') {
@@ -110,10 +110,7 @@ describe('getPriorityInsight', () => {
     }
 
     // Case B: invoke errors → network-error fallback
-    vi.spyOn(supabase.functions, 'invoke').mockResolvedValueOnce({
-      data: null,
-      error: new Error('network down'),
-    } as never);
+    spyInvoke().mockReturnValueOnce(invokeNetworkError('network down') as never);
     const networkResult = await getPriorityInsight(inputs);
     expect(networkResult.status).toBe('fallback');
     if (networkResult.status === 'fallback') {
@@ -122,10 +119,7 @@ describe('getPriorityInsight', () => {
     }
 
     // Case C: success → llm
-    vi.spyOn(supabase.functions, 'invoke').mockResolvedValueOnce({
-      data: { text: 'Some LLM text mentioning CASE-2026-00042.' },
-      error: null,
-    } as never);
+    spyInvoke().mockReturnValueOnce(invokeOk('Some LLM text mentioning CASE-2026-00042.') as never);
     const okResult = await getPriorityInsight(inputs);
     expect(okResult.status).toBe('llm');
     if (okResult.status === 'llm') {
