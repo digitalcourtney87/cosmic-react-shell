@@ -1,0 +1,18 @@
+Build a multi-agent debate system where two Claude instances argue over the best way to continue a project.
+
+Requirements:
+- Use the Anthropic API (claude-sonnet-4-20250514)
+- Two agents: Agent A (advocate for approach A) and Agent B (advocate for approach B)
+- Each agent maintains its own message history across rounds
+- The debate runs for a configurable number of rounds (default 3)
+- A third Claude call acts as judge at the end, summarising the debate and recommending the best approach
+- Accept project context as input so the debate is grounded in real decisions
+- Output a structured transcript with each round clearly labelled, followed by the judge's verdict
+
+Tech:
+- TypeScript
+- Save to a single file: debate.ts
+- Use process.env.ANTHROPIC_API_KEY for auth
+- Accept project context and the two competing approaches as CLI args or a config object at the top of the file
+
+Keep it simple and runnable with ts-node.
