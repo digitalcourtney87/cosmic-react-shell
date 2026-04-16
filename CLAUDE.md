@@ -13,6 +13,7 @@ Last updated: 2026-04-16
 
 - **001-case-compass** — Caseload overview, case detail, action stub. Three routes; frozen reference date `2026-04-16`; GDS-flavoured tokens; derivations pure over fixtures.
 - **002-ai-strategy-assistant** — AI Strategy Assistant sidebar + WorkloadHeatmap embedded in `/`. No new routes. Deterministic priority-case selection; LLM paraphrase-only; deterministic fallback on any failure.
+- **003-case-action-pages** — Action pages replacing ActionStub. Route `/case/:caseId/action/:actionId`. Four sections: case context header, action panel, policy excerpts accordion, evidence + AI advice grid. Scoped evidence selection; `evidence-advice` Supabase Edge Function; deterministic fallback with 5 typed failure reasons.
 
 ## Commands
 
