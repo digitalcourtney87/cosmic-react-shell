@@ -24,15 +24,59 @@ const SEED_CHIPS = [
 ] as const;
 
 export default function CaseChat({ enriched, policies }: Props) {
-  const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const storageKey = `case-chat:${enriched.case_id}`;
+
+  const [messages, setMessages] = useState<ChatMessage[]>(() => {
+    try {
+      const raw = sessionStorage.getItem(storageKey);
+      if (!raw) return [];
+      const parsed = JSON.parse(raw);
+      return Array.isArray(parsed) ? (parsed as ChatMessage[]) : [];
+    } catch {
+      return [];
+    }
+  });
+
   const [input, setInput] = useState('');
-  const [isExpanded, setIsExpanded] = useState(false);
+
+  const [isExpanded, setIsExpanded] = useState(() => {
+    try {
+      const raw = sessionStorage.getItem(`case-chat:${enriched.case_id}`);
+      const parsed = raw ? JSON.parse(raw) : [];
+      return Array.isArray(parsed) && parsed.length > 0;
+    } catch {
+      return false;
+    }
+  });
+
   const [isLoading, setIsLoading] = useState(false);
 
   const caseContext = useMemo(
     () => buildCaseContext(enriched, policies),
     [enriched, policies],
   );
+
+  // Reset when caseId changes (e.g. navigating between cases)
+  useEffect(() => {
+    try {
+      const raw = sessionStorage.getItem(storageKey);
+      const parsed = raw ? JSON.parse(raw) : [];
+      setMessages(Array.isArray(parsed) ? (parsed as ChatMessage[]) : []);
+      setIsExpanded(Array.isArray(parsed) && parsed.length > 0);
+    } catch {
+      setMessages([]);
+      setIsExpanded(false);
+    }
+  }, [storageKey]);
+
+  // Persist on change
+  useEffect(() => {
+    if (messages.length === 0) {
+      sessionStorage.removeItem(storageKey);
+    } else {
+      sessionStorage.setItem(storageKey, JSON.stringify(messages));
+    }
+  }, [storageKey, messages]);
 
   const listEndRef = useRef<HTMLDivElement | null>(null);
   useEffect(() => {

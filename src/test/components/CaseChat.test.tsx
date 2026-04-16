@@ -135,3 +135,59 @@ describe('CaseChat — error and retry', () => {
     expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 });
+
+describe('CaseChat — session persistence', () => {
+  it('persists messages to sessionStorage keyed by case_id', async () => {
+    const user = userEvent.setup();
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(
+        new Response(JSON.stringify({ text: 'Persisted reply.' }), { status: 200 }),
+      ),
+    );
+    vi.stubEnv('VITE_SUPABASE_URL', 'https://example.supabase.co');
+    vi.stubEnv('VITE_SUPABASE_PUBLISHABLE_KEY', 'anon-key');
+
+    render(<CaseChat enriched={enriched} policies={relevantPolicies} />);
+    await user.click(screen.getByRole('button', { name: /summarise this case/i }));
+    await waitFor(() =>
+      expect(screen.getByText('Persisted reply.')).toBeInTheDocument(),
+    );
+
+    const stored = sessionStorage.getItem(`case-chat:${enriched.case_id}`);
+    expect(stored).not.toBeNull();
+    const parsed = JSON.parse(stored as string);
+    expect(parsed.length).toBe(2);
+    expect(parsed[0].content).toBe('Summarise this case');
+  });
+
+  it('hydrates from sessionStorage on mount', () => {
+    sessionStorage.setItem(
+      `case-chat:${enriched.case_id}`,
+      JSON.stringify([
+        { role: 'user', content: 'earlier question' },
+        { role: 'assistant', content: 'earlier answer' },
+      ]),
+    );
+
+    render(<CaseChat enriched={enriched} policies={relevantPolicies} />);
+    expect(screen.getByText('earlier question')).toBeInTheDocument();
+    expect(screen.getByText('earlier answer')).toBeInTheDocument();
+  });
+
+  it('resets to empty on case_id change', () => {
+    sessionStorage.setItem(
+      `case-chat:${enriched.case_id}`,
+      JSON.stringify([{ role: 'user', content: 'A' }, { role: 'assistant', content: 'B' }]),
+    );
+    const other = getAllEnrichedCases()[1];
+
+    const { rerender } = render(
+      <CaseChat enriched={enriched} policies={relevantPolicies} />,
+    );
+    expect(screen.getByText('A')).toBeInTheDocument();
+
+    rerender(<CaseChat enriched={other} policies={[]} />);
+    expect(screen.queryByText('A')).not.toBeInTheDocument();
+  });
+});
