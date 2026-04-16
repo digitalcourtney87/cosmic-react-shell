@@ -7,13 +7,14 @@ Last updated: 2026-04-16
 - **Language**: TypeScript 5.8 (strict), Node ≥ 18 for tooling
 - **Frontend**: React 18.3, React Router DOM 6.30, Vite 5.4, Tailwind 3.4, shadcn-ui (Radix primitives), `lucide-react` icons
 - **Data**: Static JSON fixtures only (`src/challenge-3/*.json`). The assistant reads `EnrichedCase[]` from `services/cases.ts`; it writes nothing.
-- **External calls**: GOV.UK Content API (live, read-only) for guidance on the case detail page; Supabase Edge Function `priority-insight` (which proxies one call per render to OpenAI `gpt-4o-mini`) for the AI Strategy Assistant sentence. No OpenAI SDK — the edge function uses `fetch`. The OpenAI key stays server-side.
+- **External calls**: GOV.UK Content API (live, read-only) for guidance on the case detail page; three Supabase Edge Functions proxying OpenAI `gpt-4o-mini` with the key held server-side — `priority-insight` (AI Strategy Assistant sentence on `/`), `evidence-advice` (action-page advice on `/case/:caseId/action/:actionId`), and `case-chat` (per-case chat panel on `/case/:caseId`). No OpenAI SDK — every edge function uses `fetch`.
 
 ## Shipped features
 
 - **001-case-compass** — Caseload overview, case detail, action stub. Three routes; frozen reference date `2026-04-16`; GDS-flavoured tokens; derivations pure over fixtures.
 - **002-ai-strategy-assistant** — AI Strategy Assistant sidebar + WorkloadHeatmap embedded in `/`. No new routes. Deterministic priority-case selection; LLM paraphrase-only; deterministic fallback on any failure.
 - **003-case-action-pages** — Action pages replacing ActionStub. Route `/case/:caseId/action/:actionId`. Four sections: case context header, action panel, policy excerpts accordion, evidence + AI advice grid. Scoped evidence selection; `evidence-advice` Supabase Edge Function; deterministic fallback with 5 typed failure reasons.
+- **004-case-chat-assistant** — Per-case LLM chat panel rendered above the Timeline on `/case/:caseId`. Structured case context built client-side via `buildCaseContext`; conversation persisted to `sessionStorage` per `case_id`; 20-turn cap; 20s `AbortController` timeout; `case-chat` Supabase Edge Function proxying to `gpt-4o-mini` with a system prompt that bans invented identifiers, letter drafting, and workflow recommendations.
 
 ## Commands
 
@@ -31,7 +32,7 @@ TypeScript 5.8 strict. No global state library. YAGNI over architecture (Constit
 
 ## Governance
 
-See `.specify/memory/constitution.md` (current version 1.2.0). Spec-kit artefacts under `specs/001-case-compass/` and `specs/002-ai-strategy-assistant/` augment but do not supersede `docs/plans/2026-04-16-case-compass-design.md`.
+See `.specify/memory/constitution.md` (current version 1.2.0). Spec-kit artefacts under `specs/001-case-compass/` and `specs/002-ai-strategy-assistant/`, plus plan docs under `docs/plans/` (case-compass design, case actions pages, case chat assistant), augment but do not supersede `docs/plans/2026-04-16-case-compass-design.md`.
 
 <!-- MANUAL ADDITIONS START -->
 <!-- MANUAL ADDITIONS END -->
