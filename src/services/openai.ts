@@ -47,49 +47,62 @@ export async function callOpenAI(
   if (!key) throw new OpenAIError('no-key');
 
   const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), options.timeoutMs);
+  let timedOut = false;
+  const timeoutId = setTimeout(() => {
+    timedOut = true;
+    controller.abort();
+  }, options.timeoutMs);
+  const onAbort = () => controller.abort();
   if (signal) {
     if (signal.aborted) controller.abort();
-    else signal.addEventListener('abort', () => controller.abort(), { once: true });
+    else signal.addEventListener('abort', onAbort);
   }
 
-  let response: Response;
   try {
-    response = await fetch(OPENAI_ENDPOINT, {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${key}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        model: DEFAULT_MODEL,
-        temperature: options.temperature,
-        max_tokens: options.maxTokens,
-        response_format: { type: 'text' },
-        messages,
-      }),
-      signal: controller.signal,
-    });
-  } catch (err) {
-    clearTimeout(timeoutId);
-    if (err instanceof DOMException && err.name === 'AbortError') {
-      throw new OpenAIError('timeout');
+    let response: Response;
+    try {
+      response = await fetch(OPENAI_ENDPOINT, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${key}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          model: DEFAULT_MODEL,
+          temperature: options.temperature,
+          max_tokens: options.maxTokens,
+          response_format: { type: 'text' },
+          messages,
+        }),
+        signal: controller.signal,
+      });
+    } catch (err) {
+      if (err instanceof DOMException && err.name === 'AbortError') {
+        if (timedOut) throw new OpenAIError('timeout');
+        throw err;
+      }
+      throw new OpenAIError('network-error');
     }
-    throw new OpenAIError('network-error');
+
+    if (!response.ok) {
+      const detail = await response.text().catch(() => '');
+      throw new OpenAIError('non-2xx', `OpenAI returned ${response.status}: ${detail.slice(0, 200)}`);
+    }
+
+    let body: { choices?: Array<{ message?: { content?: string } }> };
+    try {
+      body = await response.json();
+    } catch {
+      throw new OpenAIError('malformed', 'OpenAI returned non-JSON');
+    }
+
+    const content = body?.choices?.[0]?.message?.content;
+    const text = typeof content === 'string' ? content.trim() : '';
+    if (!text) throw new OpenAIError('malformed', 'OpenAI returned empty content');
+
+    return text;
+  } finally {
+    clearTimeout(timeoutId);
+    signal?.removeEventListener('abort', onAbort);
   }
-  clearTimeout(timeoutId);
-
-  if (!response.ok) throw new OpenAIError('non-2xx', `OpenAI returned ${response.status}`);
-
-  let body: { choices?: Array<{ message?: { content?: string } }> };
-  try {
-    body = await response.json();
-  } catch {
-    throw new OpenAIError('malformed', 'OpenAI returned non-JSON');
-  }
-
-  const text = body?.choices?.[0]?.message?.content?.trim() ?? '';
-  if (!text) throw new OpenAIError('malformed', 'OpenAI returned empty content');
-
-  return text;
 }
