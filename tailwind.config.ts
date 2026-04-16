@@ -14,6 +14,16 @@ export default {
     },
     extend: {
       colors: {
+        gds: {
+          black: "#0b0c0c",
+          yellow: "#ffdd00",
+          blue: "#1d70b8",
+          green: "#00703c",
+          amber: "#f47738",
+          red: "#d4351c",
+          midgrey: "#505a5f",
+          lightgrey: "#f3f2f1",
+        },
         border: "hsl(var(--border))",
         input: "hsl(var(--input))",
         ring: "hsl(var(--ring))",
