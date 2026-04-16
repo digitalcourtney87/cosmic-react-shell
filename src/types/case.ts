@@ -153,6 +153,55 @@ export interface HeatmapTile {
   href: string;
 }
 
+// ── Case Chat Assistant ───────────────────────────────────────────────────────
+
+export interface StructuredCaseContext {
+  caseId: string;
+  caseType: string;
+  status: string;
+  referenceDate: string;
+  applicant: {
+    name: string;
+    reference: string;
+    dateOfBirth?: string;
+  };
+  assignedTo: string;
+  createdDate: string;
+  riskScore: {
+    level: 'critical' | 'warning' | 'normal';
+    score: number;
+    factors: string[];
+  };
+  caseNotes: string;
+  timeline: Array<{ date: string; event: string; note: string }>;
+  evidenceItems: Array<{
+    requirement: string;
+    status: 'overdue' | 'outstanding' | 'received';
+    policyId: string;
+    elapsedDays: number | null;
+    thresholdDays: number | null;
+  }>;
+  workflowState: {
+    label: string;
+    description: string;
+    escalationThresholds?: { reminder_days: number; escalation_days: number };
+    allowedTransitions: string[];
+  } | null;
+  nextActions: Array<{
+    id: string;
+    label: string;
+    severity: 'critical' | 'warning' | 'info';
+    dueInDays: number | null;
+  }>;
+  policies: Array<{ policyId: string; title: string; body: string }>;
+}
+
+export interface ChatMessage {
+  role: 'user' | 'assistant';
+  content: string;
+  status?: 'error';
+}
+
 // ── Evidence Advice (feature 003) ─────────────────────────────────────────────
 
 export interface EvidenceAdviceInputs {

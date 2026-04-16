@@ -8,6 +8,7 @@ import { useParams, Link } from 'react-router-dom';
 import { useState, useEffect } from 'react';
 import Header from '../components/Header';
 import RiskBadge from '@/components/shared/RiskBadge';
+import CaseChat from '../components/ai/CaseChat';
 import { Accordion, AccordionItem, AccordionTrigger, AccordionContent } from '@/components/ui/accordion';
 import { Card, CardContent } from '@/components/ui/card';
 import { getEnrichedCaseById, getPoliciesForCase } from '../services/cases';
@@ -462,6 +463,8 @@ export default function CaseDetail() {
 
         {/* B1 */}
         <CaseHeader enriched={enriched} />
+
+        <CaseChat key={enriched.case_id} enriched={enriched} policies={policies} />
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
 
