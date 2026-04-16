@@ -1,0 +1,151 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Case Compass | Caseworker Portal</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=GDS+Transport:wght@400;700&display=swap');
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; background-color: #f3f4f6; }
+        .govuk-header { background-color: #0b0c0c; border-bottom: 10px solid #1d70b8; }
+        .risk-critical { border-left: 8px solid #d4351c; }
+        .risk-warning { border-left: 8px solid #f47738; }
+        .ai-glow { box-shadow: 0 0 15px rgba(29, 112, 184, 0.3); border: 1px solid #1d70b8; }
+        .chat-bubble { border-radius: 15px 15px 15px 0; }
+    </style>
+</head>
+<body class="min-h-screen flex flex-col">
+
+    <header class="govuk-header text-white p-4">
+        <div class="container mx-auto flex justify-between items-center">
+            <div class="flex items-center gap-3">
+                <span class="text-2xl font-bold tracking-tighter text-white">CASE COMPASS</span>
+                <span class="bg-blue-500 text-xs px-2 py-1 rounded">BETA</span>
+            </div>
+            <nav class="space-x-6 text-sm">
+                <a href="#" class="underline decoration-2 underline-offset-4">Dashboard</a>
+                <a href="#" class="hover:underline">Policy Library</a>
+                <a href="#" class="hover:underline">Team Stats</a>
+            </nav>
+        </div>
+    </header>
+
+    <main class="container mx-auto flex-grow flex gap-6 p-6">
+        
+        <section class="w-1/3 flex flex-col gap-4">
+            <div class="bg-white rounded-lg shadow-lg flex flex-col h-[80vh] ai-glow">
+                <div class="p-4 border-b bg-blue-50 flex items-center gap-2">
+                    <div class="w-3 h-3 bg-blue-600 rounded-full animate-pulse"></div>
+                    <h2 class="font-bold text-blue-900">Morning Case Briefing</h2>
+                </div>
+                
+                <div id="chat-container" class="flex-grow p-4 overflow-y-auto space-y-4 text-sm">
+                    <div class="bg-gray-100 p-3 chat-bubble text-gray-800">
+                        Good morning, Sam. You have <strong>32 active cases</strong> today. 
+                        I've identified <strong>3 cases</strong> that require immediate action due to 56-day escalation risks.
+                    </div>
+                    <div class="bg-blue-100 p-3 chat-bubble text-blue-900 ml-4 border border-blue-200">
+                        <strong>Priority 1: CASE-2026-00042</strong><br>
+                        <em>Benefit Review</em>. Evidence (Income Statement) is 42 days overdue. Policy POL-BR-003 suggests issuing a final reminder before automatic escalation in 14 days.
+                    </div>
+                </div>
+
+                <div class="p-4 border-t bg-gray-50">
+                    <div class="flex gap-2">
+                        <input type="text" placeholder="Ask about a case or policy..." class="flex-grow p-2 border rounded shadow-sm focus:ring-2 focus:ring-blue-500 outline-none">
+                        <button class="bg-[#00703c] text-white px-4 py-2 rounded font-bold hover:bg-green-800 transition">Send</button>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <section class="w-2/3 space-y-6">
+            <div class="flex justify-between items-end">
+                <div>
+                    <h1 class="text-3xl font-bold text-gray-900">Your Caseload</h1>
+                    <p class="text-gray-600">Sorted by AI Risk Priority</p>
+                </div>
+                <div class="flex gap-2">
+                    <span class="px-3 py-1 bg-red-100 text-red-700 rounded-full text-xs font-bold">3 Critical</span>
+                    <span class="px-3 py-1 bg-orange-100 text-orange-700 rounded-full text-xs font-bold">8 Warning</span>
+                </div>
+            </div>
+
+            <div class="bg-white shadow rounded-lg overflow-hidden">
+                <table class="w-full text-left border-collapse">
+                    <thead class="bg-gray-50 text-gray-600 uppercase text-xs">
+                        <tr>
+                            <th class="p-4 border-b">Case ID</th>
+                            <th class="p-4 border-b">Applicant</th>
+                            <th class="p-4 border-b">Type</th>
+                            <th class="p-4 border-b">Status</th>
+                            <th class="p-4 border-b">Risk Score</th>
+                            <th class="p-4 border-b"></th>
+                        </tr>
+                    </thead>
+                    <tbody class="text-sm">
+                        <tr class="hover:bg-gray-50 risk-critical cursor-pointer" onclick="viewCase('CASE-2026-00042')">
+                            <td class="p-4 font-mono font-bold">CASE-2026-00042</td>
+                            <td class="p-4">Alex Rivera</td>
+                            <td class="p-4 italic">Benefit Review</td>
+                            <td class="p-4"><span class="bg-red-100 text-red-800 px-2 py-1 rounded">Awaiting Evidence</span></td>
+                            <td class="p-4 text-center font-bold text-red-600">9/10</td>
+                            <td class="p-4 text-blue-600 font-bold">View →</td>
+                        </tr>
+                        <tr class="hover:bg-gray-50 risk-warning cursor-pointer">
+                            <td class="p-4 font-mono font-bold">CASE-2026-00105</td>
+                            <td class="p-4">Jordan Smith</td>
+                            <td class="p-4 italic">Licence App</td>
+                            <td class="p-4"><span class="bg-orange-100 text-orange-800 px-2 py-1 rounded">Under Review</span></td>
+                            <td class="p-4 text-center font-bold text-orange-600">6/10</td>
+                            <td class="p-4 text-blue-600 font-bold">View →</td>
+                        </tr>
+                        <tr class="hover:bg-gray-50 border-left border-gray-200 cursor-pointer">
+                            <td class="p-4 font-mono font-bold">CASE-2026-00211</td>
+                            <td class="p-4">Taylor Wong</td>
+                            <td class="p-4 italic">Compliance Check</td>
+                            <td class="p-4"><span class="bg-green-100 text-green-800 px-2 py-1 rounded">Completed</span></td>
+                            <td class="p-4 text-center font-bold text-gray-400">1/10</td>
+                            <td class="p-4 text-blue-600 font-bold">View →</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+
+            <div id="case-preview" class="hidden bg-white p-6 border-2 border-blue-500 rounded-lg shadow-xl">
+                <div class="flex justify-between items-start mb-4">
+                    <h3 class="text-xl font-bold" id="preview-title">Case Detail: CASE-2026-00042</h3>
+                    <button onclick="closePreview()" class="text-gray-400 hover:text-gray-600">✕ Close</button>
+                </div>
+                <div class="grid grid-cols-2 gap-8">
+                    <div>
+                        <h4 class="font-bold text-xs uppercase text-gray-500 mb-2">AI Evidence Cross-Check</h4>
+                        <ul class="space-y-2">
+                            <li class="flex items-center gap-2 text-sm">✅ Proof of Address (Received)</li>
+                            <li class="flex items-center gap-2 text-sm text-red-600 font-bold">🔴 Income Statement (Missing - 42 days)</li>
+                            <li class="flex items-center gap-2 text-sm text-orange-600 font-bold">⏳ Signed Declaration (Requested)</li>
+                        </ul>
+                    </div>
+                    <div class="bg-blue-50 p-4 rounded border border-blue-100">
+                        <h4 class="font-bold text-blue-800 text-xs uppercase mb-2">Suggested Next Action</h4>
+                        <p class="text-sm mb-3">Cross-referencing POL-BR-003: Request has exceeded the 28-day reminder threshold.</p>
+                        <button class="w-full bg-blue-700 text-white py-2 rounded text-sm font-bold shadow hover:bg-blue-800">Generate Chasing Email</button>
+                    </div>
+                </div>
+            </div>
+        </section>
+    </main>
+
+    <script>
+        function viewCase(id) {
+            document.getElementById('case-preview').classList.remove('hidden');
+            window.scrollTo({ top: document.body.scrollHeight, behavior: 'smooth' });
+        }
+
+        function closePreview() {
+            document.getElementById('case-preview').classList.add('hidden');
+        }
+    </script>
+</body>
+</html>
