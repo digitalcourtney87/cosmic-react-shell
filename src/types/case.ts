@@ -109,3 +109,46 @@ export interface EnrichedCase extends Case {
   workflowState: WorkflowStateEntry | null;
   ageInDays: number;
 }
+
+// ── AI Strategy Assistant derived types (feature 002) ────────────────────────
+
+export interface TriageCounts {
+  critical: number;
+  warning: number;
+  normal: number;
+}
+
+export interface PriorityInsightInputs {
+  caseId: string;
+  caseRef: string;
+  applicantName: string;
+  riskLevel: RiskLevel;
+  topFactors: string[];
+  policyId: string | null;
+  policyTitle: string | null;
+  thresholdPhrase: string | null;
+  actionId: string | null;
+  actionLabel: string;
+  actionHref: string | null;
+}
+
+export type FallbackReason =
+  | 'no-key'
+  | 'network-error'
+  | 'timeout'
+  | 'non-2xx'
+  | 'malformed';
+
+export type PriorityInsightResult =
+  | { status: 'pending' }
+  | { status: 'llm'; text: string; inputs: PriorityInsightInputs }
+  | { status: 'fallback'; text: string; inputs: PriorityInsightInputs; reason: FallbackReason };
+
+export interface HeatmapTile {
+  caseId: string;
+  caseRef: string;
+  applicantName: string;
+  riskLevel: RiskLevel;
+  riskScore: number;
+  href: string;
+}
