@@ -293,9 +293,7 @@ describe('CaseChat — defensive guards', () => {
       ]),
     );
 
-    const invokeSpy = vi
-      .spyOn(supabase.functions, 'invoke')
-      .mockImplementation(() => new Promise(() => {}) as never);
+    const invokeSpy = spyInvoke().mockImplementation(() => new Promise(() => {}) as never);
 
     render(<CaseChat enriched={enriched} policies={relevantPolicies} />);
 
