@@ -1,27 +1,18 @@
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Route, Routes } from "react-router-dom";
-import { Toaster as Sonner } from "@/components/ui/sonner";
-import { Toaster } from "@/components/ui/toaster";
-import { TooltipProvider } from "@/components/ui/tooltip";
-import Index from "./pages/Index.tsx";
-import NotFound from "./pages/NotFound.tsx";
-
-const queryClient = new QueryClient();
+import CaseloadOverview from "./pages/CaseloadOverview";
+import CaseDetail from "./pages/CaseDetail";
+import ActionStub from "./pages/ActionStub";
+import NotFound from "./pages/NotFound";
 
 const App = () => (
-  <QueryClientProvider client={queryClient}>
-    <TooltipProvider>
-      <Toaster />
-      <Sonner />
-      <BrowserRouter>
-        <Routes>
-          <Route path="/" element={<Index />} />
-          {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
-          <Route path="*" element={<NotFound />} />
-        </Routes>
-      </BrowserRouter>
-    </TooltipProvider>
-  </QueryClientProvider>
+  <BrowserRouter>
+    <Routes>
+      <Route path="/" element={<CaseloadOverview />} />
+      <Route path="/case/:caseId" element={<CaseDetail />} />
+      <Route path="/case/:caseId/action/:actionId" element={<ActionStub />} />
+      <Route path="*" element={<NotFound />} />
+    </Routes>
+  </BrowserRouter>
 );
 
 export default App;
