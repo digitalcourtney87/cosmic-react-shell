@@ -58,9 +58,11 @@ describe('CaseChat — chip submit → assistant reply', () => {
 
     // fetch was called once with the expected body
     expect(fetchMock).toHaveBeenCalledTimes(1);
-    const [, init] = fetchMock.mock.calls[0];
+    const [url, init] = fetchMock.mock.calls[0];
+    expect(url).toBe('https://api.openai.com/v1/chat/completions');
     const body = JSON.parse(init.body as string);
     expect(body.model).toBe('gpt-4o-mini');
+    expect(body.messages[0].role).toBe('system');
     const last = body.messages[body.messages.length - 1];
     expect(last.role).toBe('user');
     expect(last.content).toContain("What's overdue?");
