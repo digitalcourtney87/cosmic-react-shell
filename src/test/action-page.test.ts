@@ -11,7 +11,7 @@ import {
   buildEvidenceAdviceInputs,
   composeEvidenceFallback,
 } from '../lib/action';
-import { validateEvidenceResponse, getEvidenceAdvice } from '../services/ai';
+import { getEvidenceAdvice } from '../services/ai';
 import type { EvidenceAdviceInputs, ActionEntry } from '../types/case';
 
 const realFetch = globalThis.fetch;
@@ -126,50 +126,7 @@ describe('composeEvidenceFallback', () => {
   });
 });
 
-// ── Test 3 — validateEvidenceResponse ────────────────────────────────────────
-
-describe('validateEvidenceResponse', () => {
-  it('accepts a valid response; rejects on missing caseRef, actionLabel, or requirement', () => {
-    const inputs: EvidenceAdviceInputs = {
-      caseRef: 'CASE-2026-00042',
-      actionId: 'BR-04',
-      actionLabel: 'Send 28-day reminder',
-      scope: 'action',
-      policies: [{ id: 'POL-BR-003', title: 'Evidence Requirements' }],
-      evidence: [
-        { requirement: 'income statement', status: 'outstanding', elapsedDays: 30, thresholdDays: 56, policyId: 'POL-BR-003' },
-      ],
-      counts: { received: 0, outstanding: 1, overdue: 0 },
-    };
-
-    // Valid response mentions case ref, action label, and the outstanding requirement
-    const validText = 'CASE-2026-00042 requires a Send 28-day reminder. income statement is still outstanding. Chase it citing POL-BR-003.';
-    expect(validateEvidenceResponse(validText, inputs)).toBe(true);
-
-    // Missing case reference
-    const noCaseRef = 'The evidence request is outstanding. Send 28-day reminder now.';
-    expect(validateEvidenceResponse(noCaseRef, inputs)).toBe(false);
-
-    // Missing action label
-    const noActionLabel = 'CASE-2026-00042 has an outstanding income statement.';
-    expect(validateEvidenceResponse(noActionLabel, inputs)).toBe(false);
-
-    // Missing the outstanding requirement (hallucinated gap)
-    const missingReq = 'CASE-2026-00042 — Send 28-day reminder. Some documents are outstanding. Chase them.';
-    expect(validateEvidenceResponse(missingReq, inputs)).toBe(false);
-
-    // All evidence received — no gap check required
-    const allReceivedInputs: EvidenceAdviceInputs = {
-      ...inputs,
-      evidence: [{ requirement: 'income statement', status: 'received', elapsedDays: 20, thresholdDays: 56, policyId: 'POL-BR-003' }],
-      counts: { received: 1, outstanding: 0, overdue: 0 },
-    };
-    const allReceivedText = 'CASE-2026-00042 — Send 28-day reminder. All documents received. You can proceed.';
-    expect(validateEvidenceResponse(allReceivedText, allReceivedInputs)).toBe(true);
-  });
-});
-
-// ── Test 4 — getEvidenceAdvice happy path ─────────────────────────────────────
+// ── Test 3 — getEvidenceAdvice happy path ─────────────────────────────────────
 
 describe('getEvidenceAdvice', () => {
   const inputs: EvidenceAdviceInputs = {
@@ -184,16 +141,15 @@ describe('getEvidenceAdvice', () => {
     counts: { received: 0, outstanding: 1, overdue: 0 },
   };
 
-  it('returns llm status when fetch succeeds and validator passes', async () => {
-    vi.stubEnv('VITE_SUPABASE_URL', 'https://example.supabase.co');
-    vi.stubEnv('VITE_SUPABASE_ANON_KEY', 'anon-test-key');
+  it('returns llm status when fetch succeeds', async () => {
+    vi.stubEnv('VITE_OPENAI_API_KEY', 'sk-test');
 
     const validText = 'CASE-2026-00042 — Send 28-day reminder. income statement remains outstanding after 30 days. Chase it citing POL-BR-003.';
     vi.stubGlobal(
       'fetch',
       vi.fn().mockResolvedValue(
         new Response(
-          JSON.stringify({ text: validText }),
+          JSON.stringify({ choices: [{ message: { content: validText } }] }),
           { status: 200, headers: { 'Content-Type': 'application/json' } },
         ),
       ),
@@ -206,11 +162,10 @@ describe('getEvidenceAdvice', () => {
     }
   });
 
-  // ── Test 5 — no-key fallback ──────────────────────────────────────────────
+  // ── Test 4 — no-key fallback ──────────────────────────────────────────────
 
-  it('falls back with reason no-key when Supabase config is absent', async () => {
-    vi.stubEnv('VITE_SUPABASE_URL', '');
-    vi.stubEnv('VITE_SUPABASE_ANON_KEY', '');
+  it('falls back with reason no-key when OpenAI key is absent', async () => {
+    vi.stubEnv('VITE_OPENAI_API_KEY', '');
 
     const result = await getEvidenceAdvice(inputs);
     expect(result.status).toBe('fallback');
@@ -220,11 +175,10 @@ describe('getEvidenceAdvice', () => {
     }
   });
 
-  // ── Test 6 — network-error fallback ──────────────────────────────────────
+  // ── Test 5 — network-error fallback ──────────────────────────────────────
 
   it('falls back with reason network-error when fetch rejects', async () => {
-    vi.stubEnv('VITE_SUPABASE_URL', 'https://example.supabase.co');
-    vi.stubEnv('VITE_SUPABASE_ANON_KEY', 'anon-test-key');
+    vi.stubEnv('VITE_OPENAI_API_KEY', 'sk-test');
 
     vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new TypeError('network down')));
 
@@ -232,31 +186,6 @@ describe('getEvidenceAdvice', () => {
     expect(result.status).toBe('fallback');
     if (result.status === 'fallback') {
       expect(result.reason).toBe('network-error');
-      expect(result.text).toContain('CASE-2026-00042');
-    }
-  });
-
-  // ── Test 7 — malformed fallback ───────────────────────────────────────────
-
-  it('falls back with reason malformed when validator rejects the LLM response', async () => {
-    vi.stubEnv('VITE_SUPABASE_URL', 'https://example.supabase.co');
-    vi.stubEnv('VITE_SUPABASE_ANON_KEY', 'anon-test-key');
-
-    // Response is 200 OK but lacks the outstanding requirement → validator rejects
-    vi.stubGlobal(
-      'fetch',
-      vi.fn().mockResolvedValue(
-        new Response(
-          JSON.stringify({ text: 'CASE-2026-00042 — Send 28-day reminder. Everything looks fine.' }),
-          { status: 200, headers: { 'Content-Type': 'application/json' } },
-        ),
-      ),
-    );
-
-    const result = await getEvidenceAdvice(inputs);
-    expect(result.status).toBe('fallback');
-    if (result.status === 'fallback') {
-      expect(result.reason).toBe('malformed');
       expect(result.text).toContain('CASE-2026-00042');
     }
   });
