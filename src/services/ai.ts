@@ -12,6 +12,7 @@ import type {
   EvidenceAdviceResult,
 } from '../types/case';
 import { composeEvidenceFallback } from '../lib/action';
+import { callOpenAI, OpenAIError } from './openai';
 
 const RISK_ORDER: Record<RiskLevel, number> = { critical: 0, warning: 1, normal: 2 };
 
@@ -128,164 +129,94 @@ export function buildHeatmapTiles(filtered: EnrichedCase[]): HeatmapTile[] {
   });
 }
 
-const TIMEOUT_MS = 5000;
-const EDGE_FUNCTION_PATH = '/functions/v1/priority-insight';
-
-function validateResponse(text: string, inputs: PriorityInsightInputs): boolean {
-  if (!text.includes(inputs.caseRef)) return false;
-  if (!text.includes(inputs.actionLabel)) return false;
-  if (inputs.policyId && !text.includes(inputs.policyId)) return false;
-  return true;
-}
-
-function readSupabaseConfig(): { url: string; anonKey: string } | null {
-  const url = import.meta.env.VITE_SUPABASE_URL;
-  const anonKey =
-    import.meta.env.VITE_SUPABASE_ANON_KEY ??
-    import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
-  if (typeof url !== 'string' || url.length === 0) return null;
-  if (typeof anonKey !== 'string' || anonKey.length === 0) return null;
-  return { url: url.replace(/\/+$/, ''), anonKey };
-}
-
 function buildFallback(inputs: PriorityInsightInputs, reason: FallbackReason): PriorityInsightResult {
   return { status: 'fallback', text: composeFallback(inputs), inputs, reason };
 }
 
 // ── Evidence Advice (feature 003) ─────────────────────────────────────────────
 
-const EVIDENCE_ADVICE_PATH = '/functions/v1/evidence-advice';
-
-export function validateEvidenceResponse(text: string, inputs: EvidenceAdviceInputs): boolean {
-  if (!text.includes(inputs.caseRef)) return false;
-  if (!text.includes(inputs.actionLabel)) return false;
-  const hasGap = inputs.evidence.some(e => e.status !== 'received');
-  if (hasGap) {
-    const anyRequirementMentioned = inputs.evidence
-      .filter(e => e.status !== 'received')
-      .some(e => text.includes(e.requirement));
-    if (!anyRequirementMentioned) return false;
-  }
-  return true;
-}
-
 function buildEvidenceAdviceFallback(inputs: EvidenceAdviceInputs, reason: FallbackReason): EvidenceAdviceResult {
   return { status: 'fallback', text: composeEvidenceFallback(inputs), inputs, reason };
 }
+
+const EVIDENCE_SYSTEM_PROMPT = [
+  'You are a decision-support assistant for a UK government caseworker.',
+  'Given a case reference, recommended action, scoped evidence list, and policy',
+  'extracts, write 2-4 plain-English sentences advising the caseworker. Mention',
+  'the case reference verbatim. If any evidence items are outstanding or overdue,',
+  'name at least one of those requirements. Cite a policy id when relevant. Do',
+  'not invent identifiers. No emoji. No letter drafting.',
+].join('\n');
 
 export async function getEvidenceAdvice(
   inputs: EvidenceAdviceInputs,
   signal?: AbortSignal,
 ): Promise<EvidenceAdviceResult> {
-  const config = readSupabaseConfig();
-  if (!config) return buildEvidenceAdviceFallback(inputs, 'no-key');
+  const userPrompt = JSON.stringify({
+    caseRef: inputs.caseRef,
+    actionId: inputs.actionId,
+    actionLabel: inputs.actionLabel,
+    scope: inputs.scope,
+    policies: inputs.policies,
+    evidence: inputs.evidence,
+    counts: inputs.counts,
+  }, null, 2);
 
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), TIMEOUT_MS);
-  if (signal) {
-    if (signal.aborted) controller.abort();
-    else signal.addEventListener('abort', () => controller.abort(), { once: true });
-  }
-
-  let response: Response;
   try {
-    response = await fetch(`${config.url}${EVIDENCE_ADVICE_PATH}`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'apikey': config.anonKey,
-        Authorization: `Bearer ${config.anonKey}`,
-      },
-      body: JSON.stringify({
-        caseRef: inputs.caseRef,
-        actionId: inputs.actionId,
-        actionLabel: inputs.actionLabel,
-        scope: inputs.scope,
-        policies: inputs.policies,
-        evidence: inputs.evidence,
-        counts: inputs.counts,
-      }),
-      signal: controller.signal,
-    });
+    const text = await callOpenAI(
+      [
+        { role: 'system', content: EVIDENCE_SYSTEM_PROMPT },
+        { role: 'user', content: userPrompt },
+      ],
+      { timeoutMs: 10_000, maxTokens: 250, temperature: 0.2 },
+      signal,
+    );
+    return { status: 'llm', text, inputs };
   } catch (err) {
-    clearTimeout(timeout);
     const reason: FallbackReason =
-      err instanceof DOMException && err.name === 'AbortError' ? 'timeout' : 'network-error';
+      err instanceof OpenAIError ? err.reason : 'network-error';
     return buildEvidenceAdviceFallback(inputs, reason);
   }
-  clearTimeout(timeout);
-
-  if (!response.ok) return buildEvidenceAdviceFallback(inputs, 'non-2xx');
-
-  let text: string;
-  try {
-    const body = (await response.json()) as { text?: string };
-    text = (body.text ?? '').trim();
-  } catch {
-    return buildEvidenceAdviceFallback(inputs, 'malformed');
-  }
-
-  if (!text || !validateEvidenceResponse(text, inputs)) return buildEvidenceAdviceFallback(inputs, 'malformed');
-
-  return { status: 'llm', text, inputs };
 }
 
 // ── Priority Insight (feature 002) ────────────────────────────────────────────
+
+const PRIORITY_SYSTEM_PROMPT = [
+  'You are a decision-support assistant for a UK government caseworker.',
+  'Given structured priority-case inputs, write ONE short sentence (max 30 words)',
+  'identifying the case, the breached policy and threshold (if any), and the',
+  'recommended next action. Mention the case reference verbatim. Do not invent',
+  'identifiers. Plain English. No emoji.',
+].join('\n');
 
 export async function getPriorityInsight(
   inputs: PriorityInsightInputs,
   signal?: AbortSignal,
 ): Promise<PriorityInsightResult> {
-  const config = readSupabaseConfig();
-  if (!config) return buildFallback(inputs, 'no-key');
+  const userPrompt = JSON.stringify({
+    caseRef: inputs.caseRef,
+    applicantName: inputs.applicantName,
+    riskLevel: inputs.riskLevel,
+    topFactors: inputs.topFactors,
+    policyId: inputs.policyId,
+    policyTitle: inputs.policyTitle,
+    thresholdPhrase: inputs.thresholdPhrase,
+    actionLabel: inputs.actionLabel,
+  }, null, 2);
 
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), TIMEOUT_MS);
-  if (signal) {
-    if (signal.aborted) controller.abort();
-    else signal.addEventListener('abort', () => controller.abort(), { once: true });
-  }
-
-  let response: Response;
   try {
-    response = await fetch(`${config.url}${EDGE_FUNCTION_PATH}`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'apikey': config.anonKey,
-        Authorization: `Bearer ${config.anonKey}`,
-      },
-      body: JSON.stringify({
-        caseRef: inputs.caseRef,
-        applicantName: inputs.applicantName,
-        riskLevel: inputs.riskLevel,
-        topFactors: inputs.topFactors,
-        policyId: inputs.policyId,
-        policyTitle: inputs.policyTitle,
-        thresholdPhrase: inputs.thresholdPhrase,
-        actionLabel: inputs.actionLabel,
-      }),
-      signal: controller.signal,
-    });
+    const text = await callOpenAI(
+      [
+        { role: 'system', content: PRIORITY_SYSTEM_PROMPT },
+        { role: 'user', content: userPrompt },
+      ],
+      { timeoutMs: 8000, maxTokens: 120, temperature: 0.2 },
+      signal,
+    );
+    return { status: 'llm', text, inputs };
   } catch (err) {
-    clearTimeout(timeout);
     const reason: FallbackReason =
-      err instanceof DOMException && err.name === 'AbortError' ? 'timeout' : 'network-error';
+      err instanceof OpenAIError ? err.reason : 'network-error';
     return buildFallback(inputs, reason);
   }
-  clearTimeout(timeout);
-
-  if (!response.ok) return buildFallback(inputs, 'non-2xx');
-
-  let text: string;
-  try {
-    const body = (await response.json()) as { text?: string };
-    text = (body.text ?? '').trim();
-  } catch {
-    return buildFallback(inputs, 'malformed');
-  }
-
-  if (!text || !validateResponse(text, inputs)) return buildFallback(inputs, 'malformed');
-
-  return { status: 'llm', text, inputs };
 }

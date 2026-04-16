@@ -41,14 +41,13 @@ describe('CaseChat — chip submit → assistant reply', () => {
   it('clicking a chip expands, renders user bubble, POSTs to edge function, renders assistant bubble', async () => {
     const user = userEvent.setup();
     const fetchMock = vi.fn().mockResolvedValue(
-      new Response(JSON.stringify({ text: 'Three items are outstanding.' }), {
+      new Response(JSON.stringify({ choices: [{ message: { content: 'Three items are outstanding.' } }] }), {
         status: 200,
         headers: { 'Content-Type': 'application/json' },
       }),
     );
     vi.stubGlobal('fetch', fetchMock);
-    vi.stubEnv('VITE_SUPABASE_URL', 'https://example.supabase.co');
-    vi.stubEnv('VITE_SUPABASE_PUBLISHABLE_KEY', 'anon-key');
+    vi.stubEnv('VITE_OPENAI_API_KEY', 'sk-test');
 
     render(<CaseChat enriched={enriched} policies={relevantPolicies} />);
 
@@ -59,10 +58,15 @@ describe('CaseChat — chip submit → assistant reply', () => {
 
     // fetch was called once with the expected body
     expect(fetchMock).toHaveBeenCalledTimes(1);
-    const [, init] = fetchMock.mock.calls[0];
+    const [url, init] = fetchMock.mock.calls[0];
+    expect(url).toBe('https://api.openai.com/v1/chat/completions');
     const body = JSON.parse(init.body as string);
-    expect(body.messages).toEqual([{ role: 'user', content: "What's overdue?" }]);
-    expect(body.caseContext.caseId).toBe(enriched.case_id);
+    expect(body.model).toBe('gpt-4o-mini');
+    expect(body.messages[0].role).toBe('system');
+    const last = body.messages[body.messages.length - 1];
+    expect(last.role).toBe('user');
+    expect(last.content).toContain("What's overdue?");
+    expect(last.content).toContain(enriched.case_id);
 
     // assistant bubble arrives after fetch resolves
     await waitFor(() =>
@@ -75,11 +79,10 @@ describe('CaseChat — chip submit → assistant reply', () => {
     vi.stubGlobal(
       'fetch',
       vi.fn().mockResolvedValue(
-        new Response(JSON.stringify({ text: 'OK.' }), { status: 200 }),
+        new Response(JSON.stringify({ choices: [{ message: { content: 'OK.' } }] }), { status: 200 }),
       ),
     );
-    vi.stubEnv('VITE_SUPABASE_URL', 'https://example.supabase.co');
-    vi.stubEnv('VITE_SUPABASE_PUBLISHABLE_KEY', 'anon-key');
+    vi.stubEnv('VITE_OPENAI_API_KEY', 'sk-test');
 
     render(<CaseChat enriched={enriched} policies={relevantPolicies} />);
 
@@ -96,8 +99,7 @@ describe('CaseChat — error and retry', () => {
   it('renders an error bubble with a Retry button on fetch failure', async () => {
     const user = userEvent.setup();
     vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new Error('offline')));
-    vi.stubEnv('VITE_SUPABASE_URL', 'https://example.supabase.co');
-    vi.stubEnv('VITE_SUPABASE_PUBLISHABLE_KEY', 'anon-key');
+    vi.stubEnv('VITE_OPENAI_API_KEY', 'sk-test');
 
     render(<CaseChat enriched={enriched} policies={relevantPolicies} />);
     await user.click(screen.getByRole('button', { name: /what's overdue\?/i }));
@@ -114,11 +116,10 @@ describe('CaseChat — error and retry', () => {
       .fn()
       .mockRejectedValueOnce(new Error('offline'))
       .mockResolvedValueOnce(
-        new Response(JSON.stringify({ text: 'Here is the answer.' }), { status: 200 }),
+        new Response(JSON.stringify({ choices: [{ message: { content: 'Here is the answer.' } }] }), { status: 200 }),
       );
     vi.stubGlobal('fetch', fetchMock);
-    vi.stubEnv('VITE_SUPABASE_URL', 'https://example.supabase.co');
-    vi.stubEnv('VITE_SUPABASE_PUBLISHABLE_KEY', 'anon-key');
+    vi.stubEnv('VITE_OPENAI_API_KEY', 'sk-test');
 
     render(<CaseChat enriched={enriched} policies={relevantPolicies} />);
     await user.click(screen.getByRole('button', { name: /what's overdue\?/i }));
@@ -143,11 +144,10 @@ describe('CaseChat — session persistence', () => {
     vi.stubGlobal(
       'fetch',
       vi.fn().mockResolvedValue(
-        new Response(JSON.stringify({ text: 'Persisted reply.' }), { status: 200 }),
+        new Response(JSON.stringify({ choices: [{ message: { content: 'Persisted reply.' } }] }), { status: 200 }),
       ),
     );
-    vi.stubEnv('VITE_SUPABASE_URL', 'https://example.supabase.co');
-    vi.stubEnv('VITE_SUPABASE_PUBLISHABLE_KEY', 'anon-key');
+    vi.stubEnv('VITE_OPENAI_API_KEY', 'sk-test');
 
     render(<CaseChat enriched={enriched} policies={relevantPolicies} />);
     await user.click(screen.getByRole('button', { name: /summarise this case/i }));
@@ -250,8 +250,7 @@ describe('CaseChat — defensive guards', () => {
     const user = userEvent.setup();
     const fetchMock = vi.fn();
     vi.stubGlobal('fetch', fetchMock);
-    vi.stubEnv('VITE_SUPABASE_URL', 'https://example.supabase.co');
-    vi.stubEnv('VITE_SUPABASE_PUBLISHABLE_KEY', 'anon-key');
+    vi.stubEnv('VITE_OPENAI_API_KEY', 'sk-test');
 
     render(<CaseChat enriched={enriched} policies={relevantPolicies} />);
 
@@ -270,8 +269,7 @@ describe('CaseChat — defensive guards', () => {
     // A fetch that never resolves — keeps the component in isLoading=true.
     const fetchMock = vi.fn().mockImplementation(() => new Promise(() => {}));
     vi.stubGlobal('fetch', fetchMock);
-    vi.stubEnv('VITE_SUPABASE_URL', 'https://example.supabase.co');
-    vi.stubEnv('VITE_SUPABASE_PUBLISHABLE_KEY', 'anon-key');
+    vi.stubEnv('VITE_OPENAI_API_KEY', 'sk-test');
 
     render(<CaseChat enriched={enriched} policies={relevantPolicies} />);
 
@@ -339,8 +337,7 @@ describe('CaseChat — defensive guards', () => {
     // Never-resolving fetch keeps us in isLoading=true after the first retry.
     const fetchMock = vi.fn().mockImplementation(() => new Promise(() => {}));
     vi.stubGlobal('fetch', fetchMock);
-    vi.stubEnv('VITE_SUPABASE_URL', 'https://example.supabase.co');
-    vi.stubEnv('VITE_SUPABASE_PUBLISHABLE_KEY', 'anon-key');
+    vi.stubEnv('VITE_OPENAI_API_KEY', 'sk-test');
 
     render(<CaseChat enriched={enriched} policies={relevantPolicies} />);
 

@@ -92,11 +92,7 @@ describe('composeFallback', () => {
 // - 200 OK with missing caseRef in body → malformed
 
 describe('getPriorityInsight', () => {
-  it('falls back to deterministic text on fetch rejection and on malformed response', async () => {
-    // Ensure the Supabase edge-function config is present so we exercise the fetch path, not no-key.
-    vi.stubEnv('VITE_SUPABASE_URL', 'https://example.supabase.co');
-    vi.stubEnv('VITE_SUPABASE_ANON_KEY', 'anon-test-key');
-
+  it('falls back on missing key, falls back on network reject, returns llm on 200', async () => {
     const inputs: PriorityInsightInputs = {
       caseId: 'CASE-2026-00042',
       caseRef: 'CASE-2026-00042',
@@ -112,7 +108,17 @@ describe('getPriorityInsight', () => {
     };
     const fallbackText = composeFallback(inputs);
 
-    // Case A: network rejects
+    // Case A: missing key → no-key fallback
+    vi.stubEnv('VITE_OPENAI_API_KEY', '');
+    const noKeyResult = await getPriorityInsight(inputs);
+    expect(noKeyResult.status).toBe('fallback');
+    if (noKeyResult.status === 'fallback') {
+      expect(noKeyResult.reason).toBe('no-key');
+      expect(noKeyResult.text).toBe(fallbackText);
+    }
+
+    // Case B: network rejects → network-error fallback
+    vi.stubEnv('VITE_OPENAI_API_KEY', 'sk-test');
     vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new TypeError('network down')));
     const networkResult = await getPriorityInsight(inputs);
     expect(networkResult.status).toBe('fallback');
@@ -121,21 +127,20 @@ describe('getPriorityInsight', () => {
       expect(networkResult.text).toBe(fallbackText);
     }
 
-    // Case B: 200 OK but body omits the case reference → malformed
+    // Case C: 200 OK with OpenAI shape → llm
     vi.stubGlobal(
       'fetch',
       vi.fn().mockResolvedValue(
         new Response(
-          JSON.stringify({ text: 'Nothing useful here.' }),
+          JSON.stringify({ choices: [{ message: { content: 'Some LLM text mentioning CASE-2026-00042.' } }] }),
           { status: 200, headers: { 'Content-Type': 'application/json' } },
         ),
       ),
     );
-    const malformedResult = await getPriorityInsight(inputs);
-    expect(malformedResult.status).toBe('fallback');
-    if (malformedResult.status === 'fallback') {
-      expect(malformedResult.reason).toBe('malformed');
-      expect(malformedResult.text).toBe(fallbackText);
+    const okResult = await getPriorityInsight(inputs);
+    expect(okResult.status).toBe('llm');
+    if (okResult.status === 'llm') {
+      expect(okResult.text).toBe('Some LLM text mentioning CASE-2026-00042.');
     }
   });
 });

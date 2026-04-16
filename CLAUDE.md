@@ -7,14 +7,14 @@ Last updated: 2026-04-16
 - **Language**: TypeScript 5.8 (strict), Node ≥ 18 for tooling
 - **Frontend**: React 18.3, React Router DOM 6.30, Vite 5.4, Tailwind 3.4, shadcn-ui (Radix primitives), `lucide-react` icons
 - **Data**: Static JSON fixtures only (`src/challenge-3/*.json`). The assistant reads `EnrichedCase[]` from `services/cases.ts`; it writes nothing.
-- **External calls**: GOV.UK Content API (live, read-only) for guidance on the case detail page; three Supabase Edge Functions proxying OpenAI `gpt-4o-mini` with the key held server-side — `priority-insight` (AI Strategy Assistant sentence on `/`), `evidence-advice` (action-page advice on `/case/:caseId/action/:actionId`), and `case-chat` (per-case chat panel on `/case/:caseId`). No OpenAI SDK — every edge function uses `fetch`.
+- **External calls**: GOV.UK Content API (live, read-only) for guidance on the case detail page; three direct OpenAI `gpt-4o-mini` calls from the browser using `VITE_OPENAI_API_KEY` (hackathon mode — rotate the key after the event). The calls are wrapped by `src/services/openai.ts` and invoked from `getPriorityInsight` (AI Strategy Assistant on `/`), `getEvidenceAdvice` (action page) and `sendCaseChatMessage` (case chat panel). No OpenAI SDK — `openai.ts` uses `fetch`.
 
 ## Shipped features
 
 - **001-case-compass** — Caseload overview, case detail, action stub. Three routes; frozen reference date `2026-04-16`; GDS-flavoured tokens; derivations pure over fixtures.
-- **002-ai-strategy-assistant** — AI Strategy Assistant sidebar + WorkloadHeatmap embedded in `/`. No new routes. Deterministic priority-case selection; LLM paraphrase-only; deterministic fallback on any failure.
-- **003-case-action-pages** — Action pages replacing ActionStub. Route `/case/:caseId/action/:actionId`. Four sections: case context header, action panel, policy excerpts accordion, evidence + AI advice grid. Scoped evidence selection; `evidence-advice` Supabase Edge Function; deterministic fallback with 5 typed failure reasons.
-- **004-case-chat-assistant** — Per-case LLM chat panel rendered above the Timeline on `/case/:caseId`. Structured case context built client-side via `buildCaseContext`; conversation persisted to `sessionStorage` per `case_id`; 20-turn cap; 20s `AbortController` timeout; `case-chat` Supabase Edge Function proxying to `gpt-4o-mini` with a system prompt that bans invented identifiers, letter drafting, and workflow recommendations.
+- **002-ai-strategy-assistant** — AI Strategy Assistant sidebar + WorkloadHeatmap embedded in `/`. No new routes. Deterministic priority-case selection; LLM paraphrase-only via direct OpenAI call wrapped by `src/services/openai.ts`; deterministic fallback on any failure.
+- **003-case-action-pages** — Action pages replacing ActionStub. Route `/case/:caseId/action/:actionId`. Four sections: case context header, action panel, policy excerpts accordion, evidence + AI advice grid. Scoped evidence selection; direct OpenAI call wrapped by `src/services/openai.ts`; deterministic fallback with 5 typed failure reasons.
+- **004-case-chat-assistant** — Per-case LLM chat panel rendered above the Timeline on `/case/:caseId`. Structured case context built client-side via `buildCaseContext`; conversation persisted to `sessionStorage` per `case_id`; 20-turn cap; 20s `AbortController` timeout; direct OpenAI `gpt-4o-mini` call wrapped by `src/services/openai.ts`, with the system prompt now living in `src/services/caseChat.ts` (bans invented identifiers, letter drafting, and workflow recommendations).
 
 ## Commands
 
