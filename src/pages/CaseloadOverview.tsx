@@ -140,7 +140,6 @@ export default function CaseloadOverview() {
                 className="hover:bg-gray-50 cursor-pointer border-b focus:outline-none focus:ring-[3px] focus:ring-inset"
                 style={{
                   borderLeft: `5px solid ${RISK_COLORS[c.riskScore.level].text}`,
-                  focusRingColor: '#ffdd00',
                 }}
               >
                 <td className="px-4 py-3 font-mono font-bold text-xs">{c.case_id}</td>
