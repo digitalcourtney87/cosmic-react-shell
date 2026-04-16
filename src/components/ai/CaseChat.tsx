@@ -25,31 +25,25 @@ const SEED_CHIPS = [
 
 const TURN_CAP = 20;
 
+function readStoredMessages(storageKey: string): ChatMessage[] {
+  try {
+    const raw = sessionStorage.getItem(storageKey);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? (parsed as ChatMessage[]) : [];
+  } catch {
+    return [];
+  }
+}
+
 export default function CaseChat({ enriched, policies }: Props) {
   const storageKey = `case-chat:${enriched.case_id}`;
 
-  const [messages, setMessages] = useState<ChatMessage[]>(() => {
-    try {
-      const raw = sessionStorage.getItem(storageKey);
-      if (!raw) return [];
-      const parsed = JSON.parse(raw);
-      return Array.isArray(parsed) ? (parsed as ChatMessage[]) : [];
-    } catch {
-      return [];
-    }
-  });
+  const [messages, setMessages] = useState<ChatMessage[]>(() => readStoredMessages(storageKey));
 
   const [input, setInput] = useState('');
 
-  const [isExpanded, setIsExpanded] = useState(() => {
-    try {
-      const raw = sessionStorage.getItem(`case-chat:${enriched.case_id}`);
-      const parsed = raw ? JSON.parse(raw) : [];
-      return Array.isArray(parsed) && parsed.length > 0;
-    } catch {
-      return false;
-    }
-  });
+  const [isExpanded, setIsExpanded] = useState(() => readStoredMessages(storageKey).length > 0);
 
   const [isLoading, setIsLoading] = useState(false);
 
@@ -60,15 +54,9 @@ export default function CaseChat({ enriched, policies }: Props) {
 
   // Reset when caseId changes (e.g. navigating between cases)
   useEffect(() => {
-    try {
-      const raw = sessionStorage.getItem(storageKey);
-      const parsed = raw ? JSON.parse(raw) : [];
-      setMessages(Array.isArray(parsed) ? (parsed as ChatMessage[]) : []);
-      setIsExpanded(Array.isArray(parsed) && parsed.length > 0);
-    } catch {
-      setMessages([]);
-      setIsExpanded(false);
-    }
+    const stored = readStoredMessages(storageKey);
+    setMessages(stored);
+    setIsExpanded(stored.length > 0);
   }, [storageKey]);
 
   // Persist on change

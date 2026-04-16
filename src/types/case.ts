@@ -199,5 +199,5 @@ export interface StructuredCaseContext {
 export interface ChatMessage {
   role: 'user' | 'assistant';
   content: string;
-  status?: 'ok' | 'error';
+  status?: 'error';
 }
