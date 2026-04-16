@@ -83,11 +83,24 @@ Tests cover the four derivations most likely to silently drift: evidence status 
 
 ## Scope boundaries
 
-- No authentication, no real backend, no real LLM call.
-- No write operations. The action stub is a placeholder — nothing persists.
+- No authentication, no real backend. Fixtures are the only source of truth for case, policy, and workflow data.
+- Exactly one scoped LLM call — the AI Strategy Assistant sidebar's priority-insight sentence (feature 002, FR-119). Selection of the priority case and the CTA target is fully deterministic; only the human-readable sentence is model-generated. When the key is absent, or the call fails, times out, or returns a malformed response, the panel renders a deterministic fallback sentence so the demo path always works.
+- No write operations. The action stub is a placeholder; the OpenAI request is read-only.
 - Applicant-facing view is named in the value proposition but out of MVP scope.
 - Soft cap of 50 rows on the caseload table. No pagination, no virtualisation.
 - Stretch work (synthetic cases, bottleneck summaries, case switcher) lives behind a fence in the stretch annex of the design doc; not started before the 14:30 Layers-1-4 checkpoint.
+
+## AI Strategy Assistant — API key handling (hackathon-only)
+
+The sidebar calls the OpenAI Chat Completions API at render time using `gpt-4o-mini`. Supply your key in `.env.local` (gitignored) at the repo root:
+
+```bash
+VITE_OPENAI_API_KEY=sk-proj-...
+```
+
+Set a hard $5 usage cap on the OpenAI account dashboard before running the demo.
+
+**Security caveat:** the `VITE_` prefix causes Vite to inline the key into the built bundle at build time. This is appropriate for a single controlled demo laptop only and is **NOT safe for public deployment**. If this code ever leaves the hackathon context, replace the in-browser call with a server-side proxy before shipping. See `specs/002-ai-strategy-assistant/research.md §4` for the full trade-off analysis.
 
 ## Credits
 

@@ -4,6 +4,8 @@ import Header from '../components/Header';
 import { getAllEnrichedCases } from '../services/cases';
 import { EnrichedCase, RiskLevel } from '../types/case';
 import { SEGMENT_ORDER, SEGMENT_LABELS } from '../lib/constants';
+import AIStrategyAssistant from '../components/ai/AIStrategyAssistant';
+import WorkloadHeatmap from '../components/ai/WorkloadHeatmap';
 
 const allCases = getAllEnrichedCases();
 
@@ -209,6 +211,9 @@ export default function CaseloadOverview() {
 
       <main className="mx-auto max-w-screen-xl px-6 py-8 space-y-6">
 
+        {/* Workload heatmap (above summary tiles per FR-113) */}
+        <WorkloadHeatmap filtered={filtered} />
+
         {/* Summary tiles */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
           {[
@@ -242,6 +247,10 @@ export default function CaseloadOverview() {
             </button>
           </div>
         )}
+
+        {/* Main area: filters + table alongside the AI Strategy Assistant sidebar */}
+        <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_340px] gap-6 items-start">
+          <div className="space-y-6 min-w-0">
 
         {/* Filters + group toggle */}
         <div className="bg-white rounded shadow-sm px-5 py-4 flex flex-wrap items-end gap-4">
@@ -314,6 +323,12 @@ export default function CaseloadOverview() {
           <div className="overflow-auto max-h-[60vh]">
             {groupBySegment ? renderGrouped() : renderTable(sorted)}
           </div>
+        </div>
+
+          </div>
+
+          {/* AI Strategy Assistant sidebar (FR-101) */}
+          <AIStrategyAssistant filtered={filtered} />
         </div>
 
       </main>
