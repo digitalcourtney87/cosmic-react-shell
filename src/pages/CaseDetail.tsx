@@ -7,7 +7,7 @@
 import { useParams, Link } from 'react-router-dom';
 import { useState, useEffect } from 'react';
 import Header from '../components/Header';
-import RiskBadge from '../components/RiskBadge';
+import RiskBadge from '@/components/shared/RiskBadge';
 import { Accordion, AccordionItem, AccordionTrigger, AccordionContent } from '@/components/ui/accordion';
 import { Card, CardContent } from '@/components/ui/card';
 import { getEnrichedCaseById, getPoliciesForCase } from '../services/cases';
@@ -103,7 +103,7 @@ function CaseHeader({ enriched }: { enriched: EnrichedCase }) {
         </div>
 
         {/* B7 — Risk badge (with HoverCard) */}
-        <RiskBadge riskScore={enriched.riskScore} />
+        <RiskBadge risk={enriched.riskScore} />
       </div>
 
       {/* Status pill */}
