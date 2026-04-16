@@ -1,0 +1,227 @@
+[
+  {
+    "case_type": "benefit_review",
+    "actions": [
+      {
+        "action_id": "BR-01",
+        "label": "Confirm applicant identity",
+        "triggered_at_state": "case_created",
+        "policy_refs": ["POL-BR-001"],
+        "pages": [
+          { "page": "Applicant Summary", "url_pattern": "/cases/{case_id}/applicant", "purpose": "View applicant name, DOB, and reference number" },
+          { "page": "Identity Records", "url_pattern": "/records/{reference}/identity", "purpose": "Cross-check identity against held records" },
+          { "page": "Previous Claims", "url_pattern": "/records/{reference}/claim-history", "purpose": "Review prior claims and closure reasons" }
+        ]
+      },
+      {
+        "action_id": "BR-02",
+        "label": "Determine evidence required",
+        "triggered_at_state": "case_created",
+        "policy_refs": ["POL-BR-003"],
+        "pages": [
+          { "page": "Change of Circumstances", "url_pattern": "/cases/{case_id}/trigger", "purpose": "Identify what triggered the review" },
+          { "page": "Policy Criteria", "url_pattern": "/policy/POL-BR-003", "purpose": "Check which evidence documents are required for this trigger type" }
+        ]
+      },
+      {
+        "action_id": "BR-03",
+        "label": "Issue evidence request",
+        "triggered_at_state": "awaiting_evidence",
+        "policy_refs": ["POL-BR-003"],
+        "pages": [
+          { "page": "Evidence Checklist", "url_pattern": "/cases/{case_id}/evidence", "purpose": "View outstanding and received evidence items" },
+          { "page": "Correspondence", "url_pattern": "/cases/{case_id}/correspondence", "purpose": "Send evidence request letter to applicant" },
+          { "page": "Timeline", "url_pattern": "/cases/{case_id}/timeline", "purpose": "Log date of evidence request" }
+        ]
+      },
+      {
+        "action_id": "BR-04",
+        "label": "Send 28-day reminder",
+        "triggered_at_state": "awaiting_evidence",
+        "policy_refs": ["POL-BR-003"],
+        "urgency_trigger_days": 28,
+        "pages": [
+          { "page": "Evidence Checklist", "url_pattern": "/cases/{case_id}/evidence", "purpose": "Confirm which items remain outstanding" },
+          { "page": "Correspondence", "url_pattern": "/cases/{case_id}/correspondence", "purpose": "Issue reminder letter" },
+          { "page": "Timeline", "url_pattern": "/cases/{case_id}/timeline", "purpose": "Log reminder issued" }
+        ]
+      },
+      {
+        "action_id": "BR-05",
+        "label": "Escalate — evidence outstanding 56 days",
+        "triggered_at_state": "awaiting_evidence",
+        "policy_refs": ["POL-BR-003"],
+        "urgency_trigger_days": 56,
+        "pages": [
+          { "page": "Evidence Checklist", "url_pattern": "/cases/{case_id}/evidence", "purpose": "Confirm evidence still outstanding" },
+          { "page": "Case Notes", "url_pattern": "/cases/{case_id}/notes", "purpose": "Add escalation note with context" },
+          { "page": "Escalation Form", "url_pattern": "/cases/{case_id}/escalate", "purpose": "Refer to team leader" },
+          { "page": "Timeline", "url_pattern": "/cases/{case_id}/timeline", "purpose": "Log escalation event" }
+        ]
+      },
+      {
+        "action_id": "BR-06",
+        "label": "Assess case against policy",
+        "triggered_at_state": "under_review",
+        "policy_refs": ["POL-BR-001", "POL-BR-002", "POL-BR-003"],
+        "pages": [
+          { "page": "Evidence Checklist", "url_pattern": "/cases/{case_id}/evidence", "purpose": "Verify all required evidence is present and valid" },
+          { "page": "Applicant Summary", "url_pattern": "/cases/{case_id}/applicant", "purpose": "Review current circumstances" },
+          { "page": "Policy Criteria", "url_pattern": "/policy/POL-BR-001", "purpose": "Apply eligibility criteria" },
+          { "page": "Income Assessment", "url_pattern": "/cases/{case_id}/income", "purpose": "Calculate entitlement against threshold" },
+          { "page": "Case Notes", "url_pattern": "/cases/{case_id}/notes", "purpose": "Document assessment reasoning" }
+        ]
+      },
+      {
+        "action_id": "BR-07",
+        "label": "Draft and sign off decision",
+        "triggered_at_state": "pending_decision",
+        "policy_refs": ["POL-BR-004"],
+        "pages": [
+          { "page": "Decision Summary", "url_pattern": "/cases/{case_id}/decision", "purpose": "Draft decision outcome and reasoning" },
+          { "page": "Policy Criteria", "url_pattern": "/policy/POL-BR-004", "purpose": "Check sign-off threshold (>£50/week increase requires team leader approval)" },
+          { "page": "Sign-off Queue", "url_pattern": "/cases/{case_id}/signoff", "purpose": "Submit for team leader sign-off if required" },
+          { "page": "Correspondence", "url_pattern": "/cases/{case_id}/correspondence", "purpose": "Generate decision letter with mandatory reconsideration notice if applicable" }
+        ]
+      }
+    ]
+  },
+  {
+    "case_type": "licence_application",
+    "actions": [
+      {
+        "action_id": "LA-01",
+        "label": "Initial eligibility check",
+        "triggered_at_state": "case_created",
+        "policy_refs": ["POL-LA-001"],
+        "pages": [
+          { "page": "Applicant Summary", "url_pattern": "/cases/{case_id}/applicant", "purpose": "Confirm applicant age and entity type" },
+          { "page": "Licence History", "url_pattern": "/records/{reference}/licence-history", "purpose": "Check for revocations in preceding 5 years" },
+          { "page": "Court Orders", "url_pattern": "/records/{reference}/court-orders", "purpose": "Check for prohibitive court orders" },
+          { "page": "Policy Criteria", "url_pattern": "/policy/POL-LA-001", "purpose": "Verify applicant meets all eligibility criteria" }
+        ]
+      },
+      {
+        "action_id": "LA-02",
+        "label": "Verify evidence documents",
+        "triggered_at_state": "awaiting_evidence",
+        "policy_refs": ["POL-LA-002"],
+        "pages": [
+          { "page": "Evidence Checklist", "url_pattern": "/cases/{case_id}/evidence", "purpose": "Check all required documents are present" },
+          { "page": "Policy Criteria", "url_pattern": "/policy/POL-LA-002", "purpose": "Confirm document requirements for this licence type" },
+          { "page": "Document Viewer", "url_pattern": "/cases/{case_id}/documents", "purpose": "Review submitted documents" }
+        ]
+      },
+      {
+        "action_id": "LA-03",
+        "label": "Open public consultation",
+        "triggered_at_state": "under_review",
+        "policy_refs": ["POL-LA-003"],
+        "pages": [
+          { "page": "Consultation Panel", "url_pattern": "/cases/{case_id}/consultation", "purpose": "Open 28-day consultation and publish notice" },
+          { "page": "Site Plan Viewer", "url_pattern": "/cases/{case_id}/documents/site-plan", "purpose": "Review site plan ahead of consultation" },
+          { "page": "Timeline", "url_pattern": "/cases/{case_id}/timeline", "purpose": "Log consultation open date" }
+        ]
+      },
+      {
+        "action_id": "LA-04",
+        "label": "Review objections",
+        "triggered_at_state": "under_review",
+        "policy_refs": ["POL-LA-003"],
+        "pages": [
+          { "page": "Objections Register", "url_pattern": "/cases/{case_id}/objections", "purpose": "Review all submitted objections" },
+          { "page": "Policy Criteria", "url_pattern": "/policy/POL-LA-003", "purpose": "Determine if referral to senior caseworker is required (2+ objections)" },
+          { "page": "Case Notes", "url_pattern": "/cases/{case_id}/notes", "purpose": "Record assessment of each objection" }
+        ]
+      },
+      {
+        "action_id": "LA-05",
+        "label": "Issue decision",
+        "triggered_at_state": "pending_decision",
+        "policy_refs": ["POL-LA-001", "POL-LA-003"],
+        "pages": [
+          { "page": "Decision Summary", "url_pattern": "/cases/{case_id}/decision", "purpose": "Draft decision with reasons" },
+          { "page": "Objections Register", "url_pattern": "/cases/{case_id}/objections", "purpose": "Confirm all objections have been addressed" },
+          { "page": "Correspondence", "url_pattern": "/cases/{case_id}/correspondence", "purpose": "Notify applicant of outcome" }
+        ]
+      }
+    ]
+  },
+  {
+    "case_type": "compliance_check",
+    "actions": [
+      {
+        "action_id": "CC-01",
+        "label": "Acknowledge referral and plan check",
+        "triggered_at_state": "case_created",
+        "policy_refs": ["POL-CC-001"],
+        "urgency_trigger_days": 5,
+        "pages": [
+          { "page": "Case Summary", "url_pattern": "/cases/{case_id}/summary", "purpose": "Review referral details and trigger reason" },
+          { "page": "Organisation Records", "url_pattern": "/records/{reference}/overview", "purpose": "Review organisation history and previous inspections" },
+          { "page": "Acknowledgement Form", "url_pattern": "/cases/{case_id}/acknowledge", "purpose": "Send acknowledgement within 5 working days" },
+          { "page": "Inspection Planner", "url_pattern": "/cases/{case_id}/plan", "purpose": "Schedule evidence request and site visit if required" }
+        ]
+      },
+      {
+        "action_id": "CC-02",
+        "label": "Request evidence from organisation",
+        "triggered_at_state": "awaiting_evidence",
+        "policy_refs": ["POL-CC-002"],
+        "pages": [
+          { "page": "Evidence Checklist", "url_pattern": "/cases/{case_id}/evidence", "purpose": "Define required documentation" },
+          { "page": "Correspondence", "url_pattern": "/cases/{case_id}/correspondence", "purpose": "Send evidence request with 28-day deadline" },
+          { "page": "Timeline", "url_pattern": "/cases/{case_id}/timeline", "purpose": "Log request date and deadline" }
+        ]
+      },
+      {
+        "action_id": "CC-03",
+        "label": "Conduct site visit",
+        "triggered_at_state": "awaiting_evidence",
+        "policy_refs": ["POL-CC-002"],
+        "pages": [
+          { "page": "Inspection Planner", "url_pattern": "/cases/{case_id}/plan", "purpose": "Confirm visit date, officers assigned, and notice sent" },
+          { "page": "Site Visit Record", "url_pattern": "/cases/{case_id}/site-visit", "purpose": "Complete site visit findings form (due within 3 working days)" },
+          { "page": "Case Notes", "url_pattern": "/cases/{case_id}/notes", "purpose": "Record observations and any breaches identified" }
+        ]
+      },
+      {
+        "action_id": "CC-04",
+        "label": "Assess documentation against compliance requirements",
+        "triggered_at_state": "under_review",
+        "policy_refs": ["POL-CC-002", "POL-CC-003"],
+        "pages": [
+          { "page": "Document Viewer", "url_pattern": "/cases/{case_id}/documents", "purpose": "Review all submitted evidence" },
+          { "page": "Policy Criteria", "url_pattern": "/policy/POL-CC-003", "purpose": "Classify any breaches as minor or serious" },
+          { "page": "Breach Register", "url_pattern": "/cases/{case_id}/breaches", "purpose": "Log identified breaches with classification" },
+          { "page": "Case Notes", "url_pattern": "/cases/{case_id}/notes", "purpose": "Document assessment reasoning" }
+        ]
+      },
+      {
+        "action_id": "CC-05",
+        "label": "Escalate serious breach",
+        "triggered_at_state": "escalated",
+        "policy_refs": ["POL-CC-003"],
+        "urgency_trigger_days": 2,
+        "pages": [
+          { "page": "Breach Register", "url_pattern": "/cases/{case_id}/breaches", "purpose": "Confirm breach classification as serious" },
+          { "page": "Escalation Form", "url_pattern": "/cases/{case_id}/escalate", "purpose": "Brief senior officer within 2 working days" },
+          { "page": "Evidence Pack", "url_pattern": "/cases/{case_id}/documents", "purpose": "Provide full evidence pack to senior officer" },
+          { "page": "Timeline", "url_pattern": "/cases/{case_id}/timeline", "purpose": "Log escalation date and reason" }
+        ]
+      },
+      {
+        "action_id": "CC-06",
+        "label": "Issue enforcement outcome",
+        "triggered_at_state": "pending_decision",
+        "policy_refs": ["POL-CC-003"],
+        "pages": [
+          { "page": "Breach Register", "url_pattern": "/cases/{case_id}/breaches", "purpose": "Review all identified breaches and classifications" },
+          { "page": "Decision Summary", "url_pattern": "/cases/{case_id}/decision", "purpose": "Draft outcome — warning, remediation requirement, or enforcement referral" },
+          { "page": "Correspondence", "url_pattern": "/cases/{case_id}/correspondence", "purpose": "Issue outcome letter to organisation" },
+          { "page": "Compliance Register", "url_pattern": "/register/compliance", "purpose": "Log outcome on compliance register" }
+        ]
+      }
+    ]
+  }
+]
