@@ -1,11 +1,15 @@
 /**
- * Direct browser → OpenAI helper.
- * Hackathon mode: API key is read from VITE_OPENAI_API_KEY and inlined into
- * the bundle. Rotate the key on the OpenAI dashboard at end of hackathon.
+ * Thin client for the `ai-proxy` Supabase Edge Function.
+ *
+ * Server-side mode: the OpenAI key (`OPENAI_API_KEY`) lives only in the edge
+ * function. The browser POSTs `{messages, temperature, maxTokens}` and gets
+ * back either `{text}` or `{error, reason}`.
+ *
+ * Public surface (`callOpenAI`, `OpenAIError`, `OpenAIErrorReason`,
+ * `OpenAIMessage`, `CallOpenAIOptions`) is unchanged so callers don't move.
  */
 
-const OPENAI_ENDPOINT = 'https://api.openai.com/v1/chat/completions';
-const DEFAULT_MODEL = 'gpt-4o-mini';
+import { supabase } from '@/integrations/supabase/client';
 
 export type OpenAIErrorReason =
   | 'no-key'
@@ -32,10 +36,14 @@ export interface CallOpenAIOptions {
   temperature: number;
 }
 
-function readKey(): string | null {
-  const key = import.meta.env.VITE_OPENAI_API_KEY;
-  if (typeof key !== 'string' || key.length === 0) return null;
-  return key;
+interface ProxyResponse {
+  text?: string;
+  error?: string;
+  reason?: OpenAIErrorReason;
+}
+
+function isReason(v: unknown): v is OpenAIErrorReason {
+  return v === 'no-key' || v === 'timeout' || v === 'network-error' || v === 'non-2xx' || v === 'malformed';
 }
 
 export async function callOpenAI(
@@ -43,9 +51,6 @@ export async function callOpenAI(
   options: CallOpenAIOptions,
   signal?: AbortSignal,
 ): Promise<string> {
-  const key = readKey();
-  if (!key) throw new OpenAIError('no-key');
-
   const controller = new AbortController();
   let timedOut = false;
   const timeoutId = setTimeout(() => {
@@ -59,47 +64,44 @@ export async function callOpenAI(
   }
 
   try {
-    let response: Response;
-    try {
-      response = await fetch(OPENAI_ENDPOINT, {
-        method: 'POST',
-        headers: {
-          Authorization: `Bearer ${key}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          model: DEFAULT_MODEL,
-          temperature: options.temperature,
-          max_tokens: options.maxTokens,
-          response_format: { type: 'text' },
-          messages,
-        }),
-        signal: controller.signal,
-      });
-    } catch (err) {
-      if (err instanceof DOMException && err.name === 'AbortError') {
-        if (timedOut) throw new OpenAIError('timeout');
-        throw err;
+    const { data, error } = await supabase.functions.invoke<ProxyResponse>('ai-proxy', {
+      body: {
+        messages,
+        temperature: options.temperature,
+        maxTokens: options.maxTokens,
+      },
+      // supabase-js doesn't forward AbortSignal, but we still race the timeout
+      // by checking controller.signal.aborted immediately after the call.
+    });
+
+    if (timedOut) throw new OpenAIError('timeout');
+    if (controller.signal.aborted) {
+      throw new DOMException('Aborted', 'AbortError');
+    }
+
+    if (error) {
+      // FunctionsHttpError responses include the JSON body in error.context
+      const ctx = (error as { context?: Response }).context;
+      if (ctx && typeof ctx.json === 'function') {
+        try {
+          const parsed = (await ctx.json()) as ProxyResponse;
+          if (isReason(parsed.reason)) {
+            throw new OpenAIError(parsed.reason, parsed.error ?? parsed.reason);
+          }
+        } catch (e) {
+          if (e instanceof OpenAIError) throw e;
+          // fall through to network-error
+        }
       }
-      throw new OpenAIError('network-error');
+      throw new OpenAIError('network-error', error.message);
     }
 
-    if (!response.ok) {
-      const detail = await response.text().catch(() => '');
-      throw new OpenAIError('non-2xx', `OpenAI returned ${response.status}: ${detail.slice(0, 200)}`);
+    if (!data) throw new OpenAIError('malformed', 'Empty response from ai-proxy');
+    if (data.reason && isReason(data.reason)) {
+      throw new OpenAIError(data.reason, data.error ?? data.reason);
     }
-
-    let body: { choices?: Array<{ message?: { content?: string } }> };
-    try {
-      body = await response.json();
-    } catch {
-      throw new OpenAIError('malformed', 'OpenAI returned non-JSON');
-    }
-
-    const content = body?.choices?.[0]?.message?.content;
-    const text = typeof content === 'string' ? content.trim() : '';
-    if (!text) throw new OpenAIError('malformed', 'OpenAI returned empty content');
-
+    const text = typeof data.text === 'string' ? data.text.trim() : '';
+    if (!text) throw new OpenAIError('malformed', 'ai-proxy returned empty text');
     return text;
   } finally {
     clearTimeout(timeoutId);
