@@ -5,11 +5,13 @@
  */
 
 import { useParams, Link } from 'react-router-dom';
+import { useState, useEffect } from 'react';
 import Header from '../components/Header';
 import RiskBadge from '../components/RiskBadge';
 import { Accordion, AccordionItem, AccordionTrigger, AccordionContent } from '@/components/ui/accordion';
 import { Card, CardContent } from '@/components/ui/card';
 import { getEnrichedCaseById, getPoliciesForCase } from '../services/cases';
+import { fetchGovUKGuidance, GovUKResult } from '../services/govuk';
 import { EnrichedCase, EvidenceItem, EvidenceStatus, ActionSeverity, WorkflowStateEntry, PolicyExtract } from '../types/case';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -327,6 +329,102 @@ function WorkflowStatusPanel({ enriched }: { enriched: EnrichedCase }) {
   );
 }
 
+// ── GOV.UK Guidance Panel ─────────────────────────────────────────────────────
+
+function GovUKGuidance({ enriched }: { enriched: EnrichedCase }) {
+  const [results, setResults] = useState<GovUKResult[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    setLoading(true);
+    setError(null);
+    fetchGovUKGuidance(enriched.case_type, enriched.status)
+      .then(setResults)
+      .catch(() => setError('Could not load GOV.UK guidance — check your connection.'))
+      .finally(() => setLoading(false));
+  }, [enriched.case_type, enriched.status]);
+
+  return (
+    <div className="bg-white rounded shadow-sm px-5 py-4">
+      <div className="flex items-center gap-2 mb-4">
+        <h2 className="font-bold text-gray-800 text-sm uppercase tracking-wide">
+          Related GOV.UK Guidance
+        </h2>
+        <span
+          className="text-xs px-2 py-0.5 rounded font-semibold"
+          style={{ backgroundColor: '#e8f0fe', color: '#1d70b8' }}
+        >
+          Live
+        </span>
+      </div>
+
+      {loading && (
+        <div className="space-y-3">
+          {[1, 2, 3].map(i => (
+            <div key={i} className="animate-pulse">
+              <div className="h-3 bg-gray-200 rounded w-3/4 mb-1.5" />
+              <div className="h-2.5 bg-gray-100 rounded w-full" />
+            </div>
+          ))}
+        </div>
+      )}
+
+      {error && (
+        <p className="text-sm" style={{ color: '#f47738' }}>{error}</p>
+      )}
+
+      {!loading && !error && results.length === 0 && (
+        <p className="text-sm text-gray-500">No matching guidance found on GOV.UK.</p>
+      )}
+
+      {!loading && !error && results.length > 0 && (
+        <ul className="space-y-4">
+          {results.map((r, i) => (
+            <li key={i} className="border-b last:border-0 pb-4 last:pb-0">
+              <a
+                href={`https://www.gov.uk${r.link}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="font-semibold text-sm hover:underline focus:outline-none focus:ring-[3px] focus:ring-[#ffdd00] rounded"
+                style={{ color: '#1d70b8' }}
+              >
+                {r.title}
+              </a>
+              {r.description && (
+                <p className="text-xs text-gray-600 mt-1 leading-relaxed line-clamp-2">
+                  {r.description}
+                </p>
+              )}
+              <div className="flex items-center gap-3 mt-1.5">
+                {r.format && (
+                  <span className="text-xs text-gray-400 capitalize">{r.format.replace(/_/g, ' ')}</span>
+                )}
+                {r.organisations[0] && (
+                  <span className="text-xs text-gray-400">{r.organisations[0]}</span>
+                )}
+                {r.public_timestamp && (
+                  <span className="text-xs text-gray-400">
+                    {new Date(r.public_timestamp).toLocaleDateString('en-GB', { month: 'short', year: 'numeric' })}
+                  </span>
+                )}
+              </div>
+            </li>
+          ))}
+        </ul>
+      )}
+
+      <p className="text-xs text-gray-400 mt-4">
+        Results fetched live from{' '}
+        <a href="https://www.gov.uk" target="_blank" rel="noopener noreferrer" className="underline">
+          GOV.UK
+        </a>{' '}
+        based on case type and current workflow state.
+      </p>
+    </div>
+  );
+}
+
 // ── Page ──────────────────────────────────────────────────────────────────────
 
 export default function CaseDetail() {
@@ -373,11 +471,12 @@ export default function CaseDetail() {
             <CaseNotes enriched={enriched} />
           </div>
 
-          {/* Right column: B6 + B5 + B4 */}
+          {/* Right column: B6 + B5 + B4 + GOV.UK */}
           <div className="lg:col-span-2 space-y-6">
             <WorkflowStatusPanel enriched={enriched} />
             <EvidenceTracker enriched={enriched} />
             <PolicyPanel enriched={enriched} policies={policies} />
+            <GovUKGuidance enriched={enriched} />
           </div>
         </div>
 
