@@ -71,6 +71,25 @@ Deno.serve(async (req: Request) => {
     return jsonResponse({ error: 'Missing required inputs (caseContext, messages[])' }, 400);
   }
 
+  if (body.messages.length > 20) {
+    return jsonResponse({ error: 'Too many messages (max 20)' }, 400);
+  }
+
+  // Validate every turn: only 'user' | 'assistant' roles allowed.
+  // Without this a caller could POST role: 'system' and override the server prompt.
+  // Defence-in-depth against direct-POST attackers: the client-side TURN_CAP and
+  // UI never produce invalid roles, but the edge function must not trust callers.
+  for (const turn of body.messages) {
+    if (
+      !turn ||
+      (turn.role !== 'user' && turn.role !== 'assistant') ||
+      typeof turn.content !== 'string' ||
+      turn.content.length === 0
+    ) {
+      return jsonResponse({ error: 'Invalid message: each turn must have role user|assistant and non-empty content' }, 400);
+    }
+  }
+
   // Rewrite the first user turn to embed the case record as JSON.
   const openaiMessages = body.messages.map((turn, i) => {
     if (i === 0 && turn.role === 'user') {
