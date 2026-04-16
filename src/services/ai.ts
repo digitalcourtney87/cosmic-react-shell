@@ -125,39 +125,8 @@ export function buildHeatmapTiles(filtered: EnrichedCase[]): HeatmapTile[] {
   });
 }
 
-const OPENAI_ENDPOINT = 'https://api.openai.com/v1/chat/completions';
 const TIMEOUT_MS = 5000;
-
-function buildSystemPrompt(): string {
-  return [
-    'You are a decision-support assistant for a UK government caseworker named Sam.',
-    'You will be given the single highest-priority case from her morning caseload,',
-    'with its risk factors and the recommended next action. Write a 2-to-3-sentence',
-    'briefing that:',
-    '  - names the case by its reference,',
-    '  - names the applicable policy by its identifier when provided,',
-    '  - recommends the named next action as the first thing Sam should do today.',
-    'Do not invent case references, policy identifiers, or actions. Do not soften',
-    'the recommendation. Be direct. Do not use emoji.',
-  ].join('\n');
-}
-
-function buildUserPrompt(inputs: PriorityInsightInputs): string {
-  const lines = [
-    `Priority case: ${inputs.caseRef}`,
-    `Applicant: ${inputs.applicantName}`,
-    `Risk level: ${inputs.riskLevel}`,
-    `Top risk factors: ${inputs.topFactors.join('; ') || 'none recorded'}`,
-  ];
-  if (inputs.policyId && inputs.policyTitle) {
-    lines.push(`Applicable policy: ${inputs.policyId} — ${inputs.policyTitle}`);
-  }
-  if (inputs.thresholdPhrase) {
-    lines.push(`Threshold breached: ${inputs.thresholdPhrase}`);
-  }
-  lines.push(`Recommended next action: "${inputs.actionLabel}"`);
-  return lines.join('\n');
-}
+const EDGE_FUNCTION_PATH = '/functions/v1/priority-insight';
 
 function validateResponse(text: string, inputs: PriorityInsightInputs): boolean {
   if (!text.includes(inputs.caseRef)) return false;
@@ -166,9 +135,14 @@ function validateResponse(text: string, inputs: PriorityInsightInputs): boolean 
   return true;
 }
 
-function readApiKey(): string | null {
-  const key = import.meta.env.VITE_OPENAI_API_KEY;
-  return typeof key === 'string' && key.length > 0 ? key : null;
+function readSupabaseConfig(): { url: string; anonKey: string } | null {
+  const url = import.meta.env.VITE_SUPABASE_URL;
+  const anonKey =
+    import.meta.env.VITE_SUPABASE_ANON_KEY ??
+    import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
+  if (typeof url !== 'string' || url.length === 0) return null;
+  if (typeof anonKey !== 'string' || anonKey.length === 0) return null;
+  return { url: url.replace(/\/+$/, ''), anonKey };
 }
 
 function buildFallback(inputs: PriorityInsightInputs, reason: FallbackReason): PriorityInsightResult {
@@ -179,8 +153,8 @@ export async function getPriorityInsight(
   inputs: PriorityInsightInputs,
   signal?: AbortSignal,
 ): Promise<PriorityInsightResult> {
-  const apiKey = readApiKey();
-  if (!apiKey) return buildFallback(inputs, 'no-key');
+  const config = readSupabaseConfig();
+  if (!config) return buildFallback(inputs, 'no-key');
 
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), TIMEOUT_MS);
@@ -191,21 +165,22 @@ export async function getPriorityInsight(
 
   let response: Response;
   try {
-    response = await fetch(OPENAI_ENDPOINT, {
+    response = await fetch(`${config.url}${EDGE_FUNCTION_PATH}`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        Authorization: `Bearer ${apiKey}`,
+        'apikey': config.anonKey,
+        Authorization: `Bearer ${config.anonKey}`,
       },
       body: JSON.stringify({
-        model: 'gpt-4o-mini',
-        temperature: 0.2,
-        max_tokens: 180,
-        response_format: { type: 'text' },
-        messages: [
-          { role: 'system', content: buildSystemPrompt() },
-          { role: 'user', content: buildUserPrompt(inputs) },
-        ],
+        caseRef: inputs.caseRef,
+        applicantName: inputs.applicantName,
+        riskLevel: inputs.riskLevel,
+        topFactors: inputs.topFactors,
+        policyId: inputs.policyId,
+        policyTitle: inputs.policyTitle,
+        thresholdPhrase: inputs.thresholdPhrase,
+        actionLabel: inputs.actionLabel,
       }),
       signal: controller.signal,
     });
@@ -221,10 +196,8 @@ export async function getPriorityInsight(
 
   let text: string;
   try {
-    const body = (await response.json()) as {
-      choices?: Array<{ message?: { content?: string } }>;
-    };
-    text = body.choices?.[0]?.message?.content?.trim() ?? '';
+    const body = (await response.json()) as { text?: string };
+    text = (body.text ?? '').trim();
   } catch {
     return buildFallback(inputs, 'malformed');
   }

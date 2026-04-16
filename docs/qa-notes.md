@@ -49,3 +49,52 @@ The shadcn warnings are noise from the template scaffold. The two `any`s in `gov
 ## Recommendation
 
 Before the 14:45 rehearsal: open `http://localhost:8080`, walk the journey in `docs/demo-script.md`, and update this file with anything that surprises. The fixtures are deterministic against `REFERENCE_DATE = 2026-04-16`, so any visible defect is a real bug, not a flake.
+
+---
+
+# Stream F appendix — AI Strategy Assistant + WorkloadHeatmap
+
+**Run date**: 2026-04-16 (post-Stream F)
+**Build**: `fd4dcc9` and later — `Merge branch '002-ai-strategy-assistant' into main`
+**Constitution**: bumped to v1.2.0 to permit one scoped LLM call (FR-119)
+
+## Verifications run (post-Stream F)
+
+| Check | Command | Result |
+|-------|---------|--------|
+| Tests pass (vitest) | `bun run test` | **8 / 8 pass** — 4 services + 3 assistant + 1 example |
+| Production build | `bun run build` | **OK** — 1633 modules transformed, ~312 kB JS, ~63 kB CSS |
+| Dev server boot | `bun dev` | **OK** — ready in 1.4s on port 8080 |
+| `/` route serves | `curl localhost:8080/` | 200 |
+| `src/services/ai.ts` compiles via Vite | `curl localhost:8080/src/services/ai.ts` | OK — `import.meta.env` injected |
+
+## Critical pitfall — test runner
+
+`bun test` (Bun's native test runner) reports **3 failures** because it does not implement `vi.unstubAllGlobals` and other vitest-mocking APIs the assistant tests rely on. **Always run `bun run test`** (which invokes vitest via the package.json script). The README has been updated to reflect this.
+
+## What was NOT tested (Stream F-specific)
+
+- Real-browser render of the AI Strategy Assistant sidebar with valid `VITE_SUPABASE_URL` + `VITE_SUPABASE_ANON_KEY` and the edge function returning a valid sentence.
+- Real-browser render of the deterministic-fallback path with no Supabase config set.
+- Edge function reachability: a `POST` to `${VITE_SUPABASE_URL}/functions/v1/priority-insight` with a sample payload returning HTTP 200 and a `{ text: string }` body.
+- Filter-lockstep behaviour: changing a caseload filter and observing the assistant's triage counts + priority insight + heatmap re-render in the same tick (FR-109 / FR-117 / SC-104).
+- Collapse / expand control reclaiming horizontal space without layout shift (FR-110 / SC-105).
+- Heatmap tile keyboard navigation (Tab walks tiles, Enter follows — FR-116).
+- Heatmap tile colour matching the table risk badge for every case (FR-114).
+- Visual confirmation that the assistant's selected case matches the deterministic-selection rule across all filter combinations (FR-104).
+- Behaviour when `VITE_OPENAI_API_KEY` is set but the OpenAI account has no billing — should fall through `non-2xx` to deterministic fallback (FR-119c).
+
+## Reminders for the demo laptop
+
+- `.env.local` must contain `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY` if the LLM-paraphrased sentence is wanted in the demo.
+- The OpenAI key lives **server-side** as a Supabase secret named `OPENAI_API_KEY` on the `priority-insight` Edge Function (`supabase/functions/priority-insight/index.ts`). It is never in the browser bundle.
+- The Supabase anon key is designed to be public, but should still be in `.env.local` (gitignored) rather than committed.
+- Set a hard $5 cap on the OpenAI account dashboard before the demo to bound the blast radius.
+- If the edge function is undeployed or the OpenAI secret is unset, the assistant falls through to the deterministic fallback sentence — demo path still works.
+
+## Net status as of this update
+
+- README, demo script, and QA notes are aligned with the post-Stream F codebase.
+- All 8 unit tests pass via `bun run test`.
+- Production build is clean.
+- Browser walkthrough still needed before the 14:45 rehearsal.

@@ -93,8 +93,9 @@ describe('composeFallback', () => {
 
 describe('getPriorityInsight', () => {
   it('falls back to deterministic text on fetch rejection and on malformed response', async () => {
-    // Ensure a key is present so we exercise the fetch path, not no-key.
-    vi.stubEnv('VITE_OPENAI_API_KEY', 'sk-test-key');
+    // Ensure the Supabase edge-function config is present so we exercise the fetch path, not no-key.
+    vi.stubEnv('VITE_SUPABASE_URL', 'https://example.supabase.co');
+    vi.stubEnv('VITE_SUPABASE_ANON_KEY', 'anon-test-key');
 
     const inputs: PriorityInsightInputs = {
       caseId: 'CASE-2026-00042',
@@ -125,9 +126,7 @@ describe('getPriorityInsight', () => {
       'fetch',
       vi.fn().mockResolvedValue(
         new Response(
-          JSON.stringify({
-            choices: [{ message: { content: 'Nothing useful here.' } }],
-          }),
+          JSON.stringify({ text: 'Nothing useful here.' }),
           { status: 200, headers: { 'Content-Type': 'application/json' } },
         ),
       ),
