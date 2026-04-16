@@ -1,0 +1,8 @@
+the caseworkers job is to do various repetetive tasks on their system. 
+we want to design a system which takes the page indexes from each repetetive task
+
+e.g. review evidence based on some criteria held elsewhere in the file
+
+we want to create a system which allows case workers to merely review urgent cases wthout having to trawl through lists of people
+this should allow them to address more cases, on a priority basis, with visual cues, meaning that they can increase their productivity
+we also need guardrails again missed cases
