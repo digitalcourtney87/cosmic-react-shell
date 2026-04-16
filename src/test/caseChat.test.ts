@@ -158,4 +158,27 @@ describe('sendCaseChatMessage', () => {
     vi.stubEnv('VITE_SUPABASE_PUBLISHABLE_KEY', 'anon-key');
     await expect(sendCaseChatMessage(stubContext, stubMessages)).rejects.toThrow();
   });
+
+  it('throws when both anon-key env vars are missing', async () => {
+    vi.stubEnv('VITE_SUPABASE_URL', 'https://example.supabase.co');
+    vi.stubEnv('VITE_SUPABASE_PUBLISHABLE_KEY', '');
+    vi.stubEnv('VITE_SUPABASE_ANON_KEY', '');
+    await expect(sendCaseChatMessage(stubContext, stubMessages)).rejects.toThrow();
+  });
+
+  it('uses VITE_SUPABASE_ANON_KEY when VITE_SUPABASE_PUBLISHABLE_KEY is absent', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ text: 'ok' }), { status: 200 }),
+    );
+    vi.stubGlobal('fetch', fetchMock);
+    vi.stubEnv('VITE_SUPABASE_URL', 'https://example.supabase.co');
+    vi.stubEnv('VITE_SUPABASE_PUBLISHABLE_KEY', '');
+    vi.stubEnv('VITE_SUPABASE_ANON_KEY', 'anon-key-via-fallback');
+
+    await sendCaseChatMessage(stubContext, stubMessages);
+
+    const [, init] = fetchMock.mock.calls[0];
+    expect(init.headers.apikey).toBe('anon-key-via-fallback');
+    expect(init.headers.Authorization).toBe('Bearer anon-key-via-fallback');
+  });
 });
