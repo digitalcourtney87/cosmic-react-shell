@@ -1,5 +1,17 @@
 <!--
 Sync Impact Report
+Version change: 1.1.0 → 1.2.0
+Bump rationale: MINOR — amends the first Hackathon Constraints bullet to permit exactly one live LLM call, scoped to the AI Strategy Assistant sidebar's human-readable priority-insight sentence (feature 002, FR-119). No core principle removed or redefined; the "no write operations", "no authentication", and "no real backend" rules are retained verbatim. "Static JSON fixtures only" is refined to make the fixtures-as-source-of-truth role explicit and to clarify the LLM call introduces no new data source — it only paraphrases fixture-derived inputs.
+Modified sections:
+  - Hackathon Constraints — first bullet rewritten to permit one scoped LLM call with deterministic fallback and deterministic selection guarantees; the fixtures-only clause reworded to "fixtures are the only source of truth for case/policy/workflow data".
+Templates requiring updates:
+  - ✅ specs/002-ai-strategy-assistant/plan.md — Complexity Tracking row updated: the former violation is now explicitly permitted by v1.2.0.
+  - ✅ specs/002-ai-strategy-assistant/spec.md — FR-119 / FR-119a / FR-119b / FR-119c already encode the required guarantees; no edit needed.
+  - ✅ specs/001-case-compass/ — unaffected by the amendment; no edit needed.
+  - ✅ .specify/templates/* — no template references the changed bullet; reviewed, no edits needed.
+Deferred TODOs: none.
+
+Sync Impact Report (previous)
 Version change: 1.0.0 → 1.1.0
 Bump rationale: MINOR — adds a third route (`/case/:caseId/action/:actionId`) to honour plan.txt's per-task page-navigation idea via a read-only stub. No principle removed or redefined; "no write operations" rule is unchanged and explicitly reinforced on the new route.
 Modified sections:
@@ -85,8 +97,8 @@ Rationale: stretch work that crowds out core polish is the most common reason ha
 
 These constraints are scoped to the April 2026 hackathon and do not bind future iterations:
 
-- No authentication, no real backend, no real LLM call. Static JSON fixtures only.
-- No write operations: no "mark as reminded", no note editing, no status changes from the UI.
+- No authentication and no real backend. The fixtures (`cases.json`, `policy-extracts.json`, `workflow-states.json`) are the only source of truth for case, policy, and workflow data. Exactly ONE live LLM call is permitted — scoped to the AI Strategy Assistant sidebar's human-readable priority-insight sentence (feature 002, FR-119). The call paraphrases inputs that are already derived from the fixtures; it MUST NOT introduce a new data source, and the model's output MUST NOT be persisted. The selection of which case is the priority and which action the CTA links to remains fully deterministic (FR-119a) — the LLM does not influence navigation targets. When the API key is absent, or the call fails, times out, or returns a malformed response (FR-119b, FR-119c), the panel MUST degrade to a deterministic fallback sentence; the deterministic parts of the UI (triage counts and CTA) never depend on the call succeeding. No other feature, route, or surface may introduce an additional LLM call without a further constitution amendment.
+- No write operations: no "mark as reminded", no note editing, no status changes from the UI. The permitted LLM request is read-only and does not relax this rule.
 - Three routes: `/` (caseload overview), `/case/:caseId` (case detail), and `/case/:caseId/action/:actionId` (mock action stub — read-only, no state mutation). The "no write operations" rule above applies in full to all three routes; the action stub renders a placeholder, it does not persist or mutate anything.
 - Applicant-facing view is named in the value proposition but explicitly out of MVP scope; data model already supports it.
 - Case fixtures: 10 hand-written cases. Synthetic generation lives in the stretch annex (A8) and is only invoked if 10 cases look thin in rehearsal.
@@ -114,4 +126,4 @@ This constitution supersedes ad-hoc decisions made during the hackathon. Amendme
 
 Reviews occur (a) after each layer milestone if any pivot was discussed, and (b) at the 14:30 checkpoint before stretch work begins. Compliance is verified by reading the design doc against this constitution; any drift is treated as a defect.
 
-**Version**: 1.1.0 | **Ratified**: 2026-04-16 | **Last Amended**: 2026-04-16
+**Version**: 1.2.0 | **Ratified**: 2026-04-16 | **Last Amended**: 2026-04-16
