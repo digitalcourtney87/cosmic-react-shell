@@ -345,3 +345,52 @@ describe('CaseChat — defensive guards', () => {
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 });
+
+describe('CaseChat — collapse', () => {
+  it('Collapse button returns to State 1 without clearing messages', async () => {
+    const user = userEvent.setup();
+    sessionStorage.setItem(
+      `case-chat:${enriched.case_id}`,
+      JSON.stringify([
+        { role: 'user', content: 'hello' },
+        { role: 'assistant', content: 'hi back' },
+      ]),
+    );
+
+    render(<CaseChat enriched={enriched} policies={relevantPolicies} />);
+
+    // State 2 on mount — messages visible, Collapse button shown
+    expect(screen.getByText('hello')).toBeInTheDocument();
+    const collapseBtn = screen.getByRole('button', { name: /collapse/i });
+
+    await user.click(collapseBtn);
+
+    // Conversation hidden, chips visible again (State 1 layout)
+    expect(screen.queryByText('hello')).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /summarise this case/i })).toBeInTheDocument();
+
+    // sessionStorage still has the messages
+    const stored = sessionStorage.getItem(`case-chat:${enriched.case_id}`);
+    expect(stored).not.toBeNull();
+    expect(JSON.parse(stored as string).length).toBe(2);
+  });
+
+  it('focusing the input re-expands to show the conversation', async () => {
+    const user = userEvent.setup();
+    sessionStorage.setItem(
+      `case-chat:${enriched.case_id}`,
+      JSON.stringify([
+        { role: 'user', content: 'hello' },
+        { role: 'assistant', content: 'hi back' },
+      ]),
+    );
+    render(<CaseChat enriched={enriched} policies={relevantPolicies} />);
+
+    await user.click(screen.getByRole('button', { name: /collapse/i }));
+    expect(screen.queryByText('hello')).not.toBeInTheDocument();
+
+    const input = screen.getByRole('textbox', { name: /ask about this case/i });
+    await user.click(input); // triggers focus
+    expect(screen.getByText('hello')).toBeInTheDocument();
+  });
+});

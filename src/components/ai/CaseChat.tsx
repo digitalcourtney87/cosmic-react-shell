@@ -125,9 +125,21 @@ export default function CaseChat({ enriched, policies }: Props) {
 
   return (
     <div className="bg-white rounded shadow-sm px-5 py-4">
-      <label className="block text-sm font-bold text-gray-800 mb-2" htmlFor="case-chat-input">
-        Ask about this case
-      </label>
+      <div className="flex items-center justify-between mb-2">
+        <label className="block text-sm font-bold text-gray-800" htmlFor="case-chat-input">
+          Ask about this case
+        </label>
+        {isExpanded && (
+          <button
+            type="button"
+            aria-expanded={isExpanded}
+            onClick={() => setIsExpanded(false)}
+            className="text-sm text-[#1d70b8] hover:underline focus:outline-none focus:ring-[3px] focus:ring-[#ffdd00] rounded"
+          >
+            Collapse
+          </button>
+        )}
+      </div>
 
       {showConversation && (
         <div
@@ -178,7 +190,7 @@ export default function CaseChat({ enriched, policies }: Props) {
 
       {atCap && (
         <div className="mb-2 text-xs px-3 py-2 rounded bg-[#fff9e6] text-[#6d4000]">
-          Conversation limit reached — collapse and reopen to start a new thread.
+          Conversation limit reached. Collapse to return to suggestions, or close the tab for a fresh thread.
         </div>
       )}
 
@@ -188,6 +200,9 @@ export default function CaseChat({ enriched, policies }: Props) {
         value={input}
         onChange={e => setInput(e.target.value)}
         onKeyDown={handleKeyDown}
+        onFocus={() => {
+          if (messages.length > 0) setIsExpanded(true);
+        }}
         disabled={isLoading || atCap}
         placeholder="e.g. What evidence is outstanding?"
         className="w-full px-3 py-2 border rounded text-sm focus:outline-none focus:ring-[3px] focus:ring-[#ffdd00] disabled:bg-gray-50"
