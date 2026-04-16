@@ -4,9 +4,10 @@
  */
 
 import { describe, it, expect, vi, afterEach } from 'vitest';
-import { buildCaseContext } from '../services/caseChat';
+import { buildCaseContext, sendCaseChatMessage } from '../services/caseChat';
 import { getAllEnrichedCases, getPoliciesForCase } from '../services/cases';
 import { REFERENCE_DATE } from '../lib/constants';
+import type { StructuredCaseContext, ChatMessage } from '../types/case';
 
 afterEach(() => {
   vi.unstubAllGlobals();
@@ -72,5 +73,89 @@ describe('buildCaseContext', () => {
         enriched.workflowState.escalation_thresholds,
       );
     }
+  });
+});
+
+const stubContext: StructuredCaseContext = {
+  caseId: 'CASE-TEST-001',
+  caseType: 'benefits_review',
+  status: 'under_review',
+  referenceDate: '2026-04-16',
+  applicant: { name: 'Test Person', reference: 'REF-001' },
+  assignedTo: 'Test Worker',
+  createdDate: '2026-03-01',
+  riskScore: { level: 'warning', score: 5, factors: [] },
+  caseNotes: '',
+  timeline: [],
+  evidenceItems: [],
+  workflowState: null,
+  nextActions: [],
+  policies: [],
+};
+
+const stubMessages: ChatMessage[] = [{ role: 'user', content: 'hi' }];
+
+describe('sendCaseChatMessage', () => {
+  it('POSTs to the edge function and returns the assistant text on 200', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ text: 'Hello there.' }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      }),
+    );
+    vi.stubGlobal('fetch', fetchMock);
+    vi.stubEnv('VITE_SUPABASE_URL', 'https://example.supabase.co');
+    vi.stubEnv('VITE_SUPABASE_PUBLISHABLE_KEY', 'anon-key');
+
+    const text = await sendCaseChatMessage(stubContext, stubMessages);
+    expect(text).toBe('Hello there.');
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const [url, init] = fetchMock.mock.calls[0];
+    expect(url).toBe('https://example.supabase.co/functions/v1/case-chat');
+    expect(init.method).toBe('POST');
+    const body = JSON.parse(init.body as string);
+    expect(body.caseContext.caseId).toBe('CASE-TEST-001');
+    expect(body.messages).toEqual(stubMessages);
+  });
+
+  it('throws when the edge function returns non-200', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(
+        new Response(JSON.stringify({ error: 'boom' }), { status: 502 }),
+      ),
+    );
+    vi.stubEnv('VITE_SUPABASE_URL', 'https://example.supabase.co');
+    vi.stubEnv('VITE_SUPABASE_PUBLISHABLE_KEY', 'anon-key');
+
+    await expect(sendCaseChatMessage(stubContext, stubMessages)).rejects.toThrow();
+  });
+
+  it('throws when the edge function returns 200 with empty text', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(
+        new Response(JSON.stringify({ text: '' }), { status: 200 }),
+      ),
+    );
+    vi.stubEnv('VITE_SUPABASE_URL', 'https://example.supabase.co');
+    vi.stubEnv('VITE_SUPABASE_PUBLISHABLE_KEY', 'anon-key');
+
+    await expect(sendCaseChatMessage(stubContext, stubMessages)).rejects.toThrow();
+  });
+
+  it('throws when fetch rejects (network error)', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new Error('offline')));
+    vi.stubEnv('VITE_SUPABASE_URL', 'https://example.supabase.co');
+    vi.stubEnv('VITE_SUPABASE_PUBLISHABLE_KEY', 'anon-key');
+
+    await expect(sendCaseChatMessage(stubContext, stubMessages)).rejects.toThrow();
+  });
+
+  it('throws when VITE_SUPABASE_URL is missing', async () => {
+    vi.stubEnv('VITE_SUPABASE_URL', '');
+    vi.stubEnv('VITE_SUPABASE_PUBLISHABLE_KEY', 'anon-key');
+    await expect(sendCaseChatMessage(stubContext, stubMessages)).rejects.toThrow();
   });
 });

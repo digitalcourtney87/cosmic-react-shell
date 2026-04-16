@@ -4,7 +4,7 @@
  * - sendCaseChatMessage: added in Task 4.
  */
 
-import type { EnrichedCase, PolicyExtract, StructuredCaseContext } from '../types/case';
+import type { ChatMessage, EnrichedCase, PolicyExtract, StructuredCaseContext } from '../types/case';
 import { REFERENCE_DATE } from '../lib/constants';
 
 export function buildCaseContext(
@@ -61,4 +61,51 @@ export function buildCaseContext(
       body: p.body,
     })),
   };
+}
+
+const EDGE_FUNCTION_PATH = '/functions/v1/case-chat';
+
+function readSupabaseConfig(): { url: string; anonKey: string } {
+  const url = import.meta.env.VITE_SUPABASE_URL;
+  const anonKey =
+    import.meta.env.VITE_SUPABASE_ANON_KEY ??
+    import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
+  if (typeof url !== 'string' || url.length === 0) {
+    throw new Error('VITE_SUPABASE_URL not configured');
+  }
+  if (typeof anonKey !== 'string' || anonKey.length === 0) {
+    throw new Error('VITE_SUPABASE_ANON_KEY / VITE_SUPABASE_PUBLISHABLE_KEY not configured');
+  }
+  return { url: url.replace(/\/+$/, ''), anonKey };
+}
+
+export async function sendCaseChatMessage(
+  caseContext: StructuredCaseContext,
+  messages: ChatMessage[],
+): Promise<string> {
+  const config = readSupabaseConfig();
+
+  const response = await fetch(`${config.url}${EDGE_FUNCTION_PATH}`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'apikey': config.anonKey,
+      Authorization: `Bearer ${config.anonKey}`,
+    },
+    body: JSON.stringify({
+      caseContext,
+      messages: messages.map(m => ({ role: m.role, content: m.content })),
+    }),
+  });
+
+  if (!response.ok) {
+    throw new Error(`Case chat edge function returned ${response.status}`);
+  }
+
+  const body = (await response.json()) as { text?: string };
+  const text = (body.text ?? '').trim();
+  if (!text) {
+    throw new Error('Case chat edge function returned empty text');
+  }
+  return text;
 }
