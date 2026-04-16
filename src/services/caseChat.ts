@@ -1,12 +1,6 @@
-/**
- * Case Chat Assistant service.
- * - buildCaseContext: pure derivation of StructuredCaseContext from EnrichedCase.
- * - sendCaseChatMessage: added in Task 4.
- */
-
 import type { ChatMessage, EnrichedCase, PolicyExtract, StructuredCaseContext } from '../types/case';
 import { REFERENCE_DATE } from '../lib/constants';
-import { callOpenAI, OpenAIError } from './openai';
+import { callOpenAI } from './openai';
 
 export function buildCaseContext(
   enriched: EnrichedCase,
@@ -82,10 +76,6 @@ export async function sendCaseChatMessage(
   caseContext: StructuredCaseContext,
   messages: ChatMessage[],
 ): Promise<string> {
-  if (messages.length === 0) {
-    throw new Error('sendCaseChatMessage: messages must not be empty');
-  }
-
   const openaiMessages = [
     { role: 'system' as const, content: SYSTEM_PROMPT },
     ...messages.map((turn, i) => {
@@ -100,16 +90,8 @@ export async function sendCaseChatMessage(
     }),
   ];
 
-  try {
-    return await callOpenAI(
-      openaiMessages,
-      { timeoutMs: CHAT_TIMEOUT_MS, maxTokens: 400, temperature: 0.2 },
-      undefined,
-    );
-  } catch (err) {
-    if (err instanceof OpenAIError) {
-      throw new Error(`Case chat failed: ${err.reason}`);
-    }
-    throw err;
-  }
+  return await callOpenAI(
+    openaiMessages,
+    { timeoutMs: CHAT_TIMEOUT_MS, maxTokens: 400, temperature: 0.2 },
+  );
 }
