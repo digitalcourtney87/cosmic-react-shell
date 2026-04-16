@@ -1,5 +1,14 @@
 <!--
 Sync Impact Report
+Version change: 1.0.0 → 1.1.0
+Bump rationale: MINOR — adds a third route (`/case/:caseId/action/:actionId`) to honour plan.txt's per-task page-navigation idea via a read-only stub. No principle removed or redefined; "no write operations" rule is unchanged and explicitly reinforced on the new route.
+Modified sections:
+  - Hackathon Constraints — "Two routes only" bullet expanded to three routes; the third route is read-only.
+Templates requiring updates:
+  - ✅ specs/001-case-compass/spec.md — FR-026 added for the stub route; FR-017a added for action links; clarifications-session entry recorded.
+  - ✅ .specify/templates/* — no edits needed (route count is not referenced).
+
+Sync Impact Report (previous)
 Version change: (initial) → 1.0.0
 Bump rationale: First ratification — no prior version to compare against. MAJOR is appropriate for the initial publish.
 Modified principles: n/a (initial draft)
@@ -78,7 +87,7 @@ These constraints are scoped to the April 2026 hackathon and do not bind future 
 
 - No authentication, no real backend, no real LLM call. Static JSON fixtures only.
 - No write operations: no "mark as reminded", no note editing, no status changes from the UI.
-- Two routes only: `/` (caseload overview) and `/case/:caseId` (case detail).
+- Three routes: `/` (caseload overview), `/case/:caseId` (case detail), and `/case/:caseId/action/:actionId` (mock action stub — read-only, no state mutation). The "no write operations" rule above applies in full to all three routes; the action stub renders a placeholder, it does not persist or mutate anything.
 - Applicant-facing view is named in the value proposition but explicitly out of MVP scope; data model already supports it.
 - Case fixtures: 10 hand-written cases. Synthetic generation lives in the stretch annex (A8) and is only invoked if 10 cases look thin in rehearsal.
 - README.md MUST be committed by 10:00 BST — it is a scored milestone for judging.
@@ -105,4 +114,4 @@ This constitution supersedes ad-hoc decisions made during the hackathon. Amendme
 
 Reviews occur (a) after each layer milestone if any pivot was discussed, and (b) at the 14:30 checkpoint before stretch work begins. Compliance is verified by reading the design doc against this constitution; any drift is treated as a defect.
 
-**Version**: 1.0.0 | **Ratified**: 2026-04-16 | **Last Amended**: 2026-04-16
+**Version**: 1.1.0 | **Ratified**: 2026-04-16 | **Last Amended**: 2026-04-16

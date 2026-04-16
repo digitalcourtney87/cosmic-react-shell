@@ -66,6 +66,8 @@ Sam needs to act on what the system tells her — issue a reminder, escalate, ma
 - A filter combination on the caseload page produces zero rows: the table area renders an empty-state message, not a blank table.
 - The fixture contains a case whose `last_updated` is in the future relative to "today": the recency factor in the risk score contributes 0 (treated as "active today") rather than producing a negative value.
 - A user follows a stale link to a `caseId` that exists in the URL but not in the fixture: the "Case not found" panel includes a link back to `/`.
+- The "Group by segment" toggle is ON and the active filter combination produces zero matching cases: the page still renders all five segment headers with `(0)` counts so the framework remains visible, instead of an empty page.
+- The "Group by segment" toggle is ON and a case's `status` does not map to any of the five segments (e.g., a future status added to the fixture): the case renders in an extra "Other" segment appended after the five fixed ones, rather than being silently dropped.
 
 ## Requirements *(mandatory)*
 
@@ -78,6 +80,8 @@ Sam needs to act on what the system tells her — issue a reminder, escalate, ma
 - **FR-003**: The caseload page MUST default-sort cases by risk score descending so the riskiest cases appear first.
 - **FR-004**: The caseload page MUST allow sorting by case age and by risk score on header click.
 - **FR-005**: The caseload page MUST provide independent filters for case type, assigned-to (individual caseworker), and status, applied with AND semantics. The assigned-to filter MUST be labelled "Assigned to" in the UI (not "Team") and its options MUST enumerate the distinct `assigned_to` values present in the loaded caseload.
+- **FR-005a**: The caseload page MUST provide a "Group by segment" toggle. When OFF (default), the table renders flat per FR-001–FR-004. When ON, cases are grouped into five segments rendered in fixed order: Escalated → Pending Decision → Under Review → Awaiting Evidence → Case Created. Within each segment, default sort is risk descending. Empty segments MUST render as collapsed `Segment (0)` headers, not be omitted, so the framework remains visible. Segment membership is derived from each case's `status` (combined with `case_type` where status names overlap across types); no fixture change is required.
+- **FR-005b**: When the active filter combination would hide one or more cases the system has flagged overdue, a warning banner MUST render above the table reading "X overdue cases hidden by current filter — Show". Activating "Show" MUST clear only the filters whose values are currently obscuring overdue cases (not all filters). The banner uses the `gds.amber` token. When no overdue cases are hidden, the banner MUST NOT render.
 - **FR-006**: The caseload page MUST display summary tiles for total cases, cases awaiting evidence, overdue cases, and average case age — values reflecting the currently filtered set.
 - **FR-007**: Clicking any row in the caseload table MUST navigate the user to the corresponding case-detail view.
 - **FR-007a**: Each caseload row MUST be reachable by Tab navigation in source order; pressing Enter on a focused row MUST navigate to that case's detail view. The table is NOT required to implement the WAI-ARIA grid pattern (no arrow-key navigation, no `role="grid"`, no `aria-sort`).
@@ -94,8 +98,13 @@ Sam needs to act on what the system tells her — issue a reminder, escalate, ma
 - **FR-015**: Evidence rows MUST be ordered overdue → outstanding → received.
 - **FR-016**: The case detail view MUST render the case's current workflow state and a list of required next actions derived from the state machine and any overdue escalations.
 - **FR-017**: Next actions MUST carry a severity indication (info / warning / critical) and critical actions MUST appear before lower-severity actions.
+- **FR-017a**: Each next-action MUST render as a link navigating to `/case/:caseId/action/:actionId`. The link MUST be reachable by Tab navigation per FR-021.
 - **FR-018**: A risk indicator MUST appear in the case header, conveying the numeric score, the level (normal / warning / critical), and the top contributing factors on hover.
 - **FR-018a**: When the case's current workflow state has no escalation threshold defined, the risk score MUST omit the case-age contribution entirely and compute from the remaining factors (overdue-evidence count and recency-since-last-update). The factors list MUST NOT include a misleading "past escalation threshold" entry in this case.
+
+**Mock action stub (route `/case/:caseId/action/:actionId`):**
+
+- **FR-026**: The action stub view MUST render a "Mock action page" panel showing the action label, the originating case reference, the action severity, and a back link to `/case/:caseId`. It MUST NOT mutate any state — no fixture writes, no in-memory case updates, no toast acknowledgements that imply persistence. An unknown `actionId` for an existing case MUST render the same not-found pattern as FR-019, scoped to the action.
 
 **Cross-cutting:**
 
@@ -153,3 +162,7 @@ Sam needs to act on what the system tells her — issue a reminder, escalate, ma
 - Q: How should the caseload "team" filter resolve, given `assigned_to` is an individual caseworker name? → A: Relabel the filter "Assigned to" and operate at individual-caseworker level; no fixture change, no derived team grouping. The "team leader" framing in the value proposition stays unchanged because the leader's filter unit is the person.
 - Q: What level of keyboard accessibility does the caseload table commit to? → A: Minimum-viable. Rows are link-semantic (Tab walks every row, Enter follows). Filters and sort headers tab in DOM order. No WAI-ARIA grid pattern, no arrow-key list navigation, no aria-sort plumbing.
 - Q: How does the caseload table handle volume beyond the seeded 10 rows? → A: Render every row up to a documented soft cap of 50 with a sticky table header and ordinary browser scroll. No pagination, no virtualisation. Any fixture larger than 50 rows is out of scope for MVP and is a re-scoping conversation.
+- Q: How should the action-segments idea from `src/challenge-3/plan.txt` integrate with the existing flat risk-sorted caseload? → A: Add a "Group by segment" toggle. Default remains flat risk-descending; toggle ON groups cases into five fixed segments (Escalated → Pending Decision → Under Review → Awaiting Evidence → Case Created) with risk-descending sort within each. Empty segments stay visible as `(0)` headers; statuses not mapping to any segment fall into an appended "Other" segment.
+- Q: How should plan.txt's per-task page navigation idea be honoured given the constitution's "two routes only" constraint? → A: Add a third stub route `/case/:caseId/action/:actionId` rendering a "Mock action page" panel (action label, case reference, severity, back link). Read-only, no state mutation. Each next-action on the case detail links to it. The constitution is amended to "three routes" (1.1.0).
+- Q: How strictly should the "no caseworker can hide overdue cases" guardrail from plan.txt be enforced? → A: Soft. Filters keep AND-semantics; when active filters would hide overdue cases, an amber banner reads "X overdue cases hidden by current filter — Show". Activating Show clears only the obscuring filters. No pinned-row exception, no hard rule that overdue rows always render.
+- Q: Where does the "5 seconds × millions of decisions" framing from plan.txt live? → A: README only. The spec already conveys per-story value; pitch copy goes in the scored README milestone alongside the demo script and does not become a spec-level requirement.
