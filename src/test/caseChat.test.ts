@@ -181,4 +181,21 @@ describe('sendCaseChatMessage', () => {
     expect(init.headers.apikey).toBe('anon-key-via-fallback');
     expect(init.headers.Authorization).toBe('Bearer anon-key-via-fallback');
   });
+
+  it('aborts and throws when the fetch never resolves within timeout', async () => {
+    vi.useFakeTimers();
+    const fetchMock = vi.fn().mockImplementation((_url, init) => {
+      return new Promise((_resolve, reject) => {
+        init.signal.addEventListener('abort', () => reject(new DOMException('Aborted', 'AbortError')));
+      });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    vi.stubEnv('VITE_SUPABASE_URL', 'https://example.supabase.co');
+    vi.stubEnv('VITE_SUPABASE_PUBLISHABLE_KEY', 'anon-key');
+
+    const promise = sendCaseChatMessage(stubContext, stubMessages);
+    vi.advanceTimersByTime(21_000);
+    await expect(promise).rejects.toThrow();
+    vi.useRealTimers();
+  });
 });

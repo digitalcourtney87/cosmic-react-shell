@@ -64,6 +64,7 @@ export function buildCaseContext(
 }
 
 const EDGE_FUNCTION_PATH = '/functions/v1/case-chat';
+const CHAT_TIMEOUT_MS = 20_000;
 
 function readSupabaseConfig(): { url: string; anonKey: string } {
   const url = import.meta.env.VITE_SUPABASE_URL;
@@ -85,18 +86,27 @@ export async function sendCaseChatMessage(
 ): Promise<string> {
   const config = readSupabaseConfig();
 
-  const response = await fetch(`${config.url}${EDGE_FUNCTION_PATH}`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'apikey': config.anonKey,
-      Authorization: `Bearer ${config.anonKey}`,
-    },
-    body: JSON.stringify({
-      caseContext,
-      messages: messages.map(m => ({ role: m.role, content: m.content })),
-    }),
-  });
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), CHAT_TIMEOUT_MS);
+
+  let response: Response;
+  try {
+    response = await fetch(`${config.url}${EDGE_FUNCTION_PATH}`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'apikey': config.anonKey,
+        Authorization: `Bearer ${config.anonKey}`,
+      },
+      body: JSON.stringify({
+        caseContext,
+        messages: messages.map(m => ({ role: m.role, content: m.content })),
+      }),
+      signal: controller.signal,
+    });
+  } finally {
+    clearTimeout(timeoutId);
+  }
 
   if (!response.ok) {
     throw new Error(`Case chat edge function returned ${response.status}`);
