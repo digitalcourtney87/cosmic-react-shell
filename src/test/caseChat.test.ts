@@ -51,9 +51,26 @@ describe('buildCaseContext', () => {
   it('includes full policy bodies verbatim', () => {
     const enriched = getAllEnrichedCases()[0];
     const relevantPolicies = getPoliciesForCase(enriched.case_type);
+    expect(relevantPolicies.length).toBeGreaterThan(0);
     const ctx = buildCaseContext(enriched, relevantPolicies);
-    if (relevantPolicies.length > 0) {
-      expect(ctx.policies[0].body).toBe(relevantPolicies[0].body);
+    expect(ctx.policies[0].body).toBe(relevantPolicies[0].body);
+    expect(ctx.policies[0].policyId).toBe(relevantPolicies[0].policy_id);
+    expect(ctx.policies[0].title).toBe(relevantPolicies[0].title);
+  });
+
+  it('renames workflowState fields from snake_case to camelCase', () => {
+    const enriched = getAllEnrichedCases().find(c => c.workflowState !== null);
+    expect(enriched).toBeDefined();
+    if (!enriched || !enriched.workflowState) return;
+    const ctx = buildCaseContext(enriched, []);
+    expect(ctx.workflowState).not.toBeNull();
+    expect(ctx.workflowState!.allowedTransitions).toEqual(
+      enriched.workflowState.allowed_transitions,
+    );
+    if (enriched.workflowState.escalation_thresholds) {
+      expect(ctx.workflowState!.escalationThresholds).toEqual(
+        enriched.workflowState.escalation_thresholds,
+      );
     }
   });
 });
