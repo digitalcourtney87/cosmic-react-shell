@@ -201,3 +201,26 @@ export interface ChatMessage {
   content: string;
   status?: 'error';
 }
+
+// ── Evidence Advice (feature 003) ─────────────────────────────────────────────
+
+export interface EvidenceAdviceInputs {
+  caseRef: string;
+  actionId: string;
+  actionLabel: string;
+  scope: 'action' | 'case-wide';
+  policies: { id: string; title: string }[];
+  evidence: {
+    requirement: string;
+    status: EvidenceStatus;
+    elapsedDays: number | null;
+    thresholdDays: number | null;
+    policyId: string;
+  }[];
+  counts: { received: number; outstanding: number; overdue: number };
+}
+
+export type EvidenceAdviceResult =
+  | { status: 'pending' }
+  | { status: 'llm'; text: string; inputs: EvidenceAdviceInputs }
+  | { status: 'fallback'; text: string; inputs: EvidenceAdviceInputs; reason: FallbackReason };

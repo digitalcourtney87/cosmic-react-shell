@@ -8,7 +8,10 @@ import type {
   TriageCounts,
   HeatmapTile,
   RiskLevel,
+  EvidenceAdviceInputs,
+  EvidenceAdviceResult,
 } from '../types/case';
+import { composeEvidenceFallback } from '../lib/action';
 
 const RISK_ORDER: Record<RiskLevel, number> = { critical: 0, warning: 1, normal: 2 };
 
@@ -148,6 +151,86 @@ function readSupabaseConfig(): { url: string; anonKey: string } | null {
 function buildFallback(inputs: PriorityInsightInputs, reason: FallbackReason): PriorityInsightResult {
   return { status: 'fallback', text: composeFallback(inputs), inputs, reason };
 }
+
+// ── Evidence Advice (feature 003) ─────────────────────────────────────────────
+
+const EVIDENCE_ADVICE_PATH = '/functions/v1/evidence-advice';
+
+export function validateEvidenceResponse(text: string, inputs: EvidenceAdviceInputs): boolean {
+  if (!text.includes(inputs.caseRef)) return false;
+  if (!text.includes(inputs.actionLabel)) return false;
+  const hasGap = inputs.evidence.some(e => e.status !== 'received');
+  if (hasGap) {
+    const anyRequirementMentioned = inputs.evidence
+      .filter(e => e.status !== 'received')
+      .some(e => text.includes(e.requirement));
+    if (!anyRequirementMentioned) return false;
+  }
+  return true;
+}
+
+function buildEvidenceAdviceFallback(inputs: EvidenceAdviceInputs, reason: FallbackReason): EvidenceAdviceResult {
+  return { status: 'fallback', text: composeEvidenceFallback(inputs), inputs, reason };
+}
+
+export async function getEvidenceAdvice(
+  inputs: EvidenceAdviceInputs,
+  signal?: AbortSignal,
+): Promise<EvidenceAdviceResult> {
+  const config = readSupabaseConfig();
+  if (!config) return buildEvidenceAdviceFallback(inputs, 'no-key');
+
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), TIMEOUT_MS);
+  if (signal) {
+    if (signal.aborted) controller.abort();
+    else signal.addEventListener('abort', () => controller.abort(), { once: true });
+  }
+
+  let response: Response;
+  try {
+    response = await fetch(`${config.url}${EVIDENCE_ADVICE_PATH}`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'apikey': config.anonKey,
+        Authorization: `Bearer ${config.anonKey}`,
+      },
+      body: JSON.stringify({
+        caseRef: inputs.caseRef,
+        actionId: inputs.actionId,
+        actionLabel: inputs.actionLabel,
+        scope: inputs.scope,
+        policies: inputs.policies,
+        evidence: inputs.evidence,
+        counts: inputs.counts,
+      }),
+      signal: controller.signal,
+    });
+  } catch (err) {
+    clearTimeout(timeout);
+    const reason: FallbackReason =
+      err instanceof DOMException && err.name === 'AbortError' ? 'timeout' : 'network-error';
+    return buildEvidenceAdviceFallback(inputs, reason);
+  }
+  clearTimeout(timeout);
+
+  if (!response.ok) return buildEvidenceAdviceFallback(inputs, 'non-2xx');
+
+  let text: string;
+  try {
+    const body = (await response.json()) as { text?: string };
+    text = (body.text ?? '').trim();
+  } catch {
+    return buildEvidenceAdviceFallback(inputs, 'malformed');
+  }
+
+  if (!text || !validateEvidenceResponse(text, inputs)) return buildEvidenceAdviceFallback(inputs, 'malformed');
+
+  return { status: 'llm', text, inputs };
+}
+
+// ── Priority Insight (feature 002) ────────────────────────────────────────────
 
 export async function getPriorityInsight(
   inputs: PriorityInsightInputs,

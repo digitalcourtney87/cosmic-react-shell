@@ -1,7 +1,7 @@
 import { BrowserRouter, Route, Routes } from "react-router-dom";
 import CaseloadOverview from "./pages/CaseloadOverview";
 import CaseDetail from "./pages/CaseDetail";
-import ActionStub from "./pages/ActionStub";
+import ActionPage from "./pages/ActionPage";
 import NotFound from "./pages/NotFound";
 
 const App = () => (
@@ -9,7 +9,7 @@ const App = () => (
     <Routes>
       <Route path="/" element={<CaseloadOverview />} />
       <Route path="/case/:caseId" element={<CaseDetail />} />
-      <Route path="/case/:caseId/action/:actionId" element={<ActionStub />} />
+      <Route path="/case/:caseId/action/:actionId" element={<ActionPage />} />
       <Route path="*" element={<NotFound />} />
     </Routes>
   </BrowserRouter>
