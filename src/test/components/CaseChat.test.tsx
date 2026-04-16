@@ -90,3 +90,48 @@ describe('CaseChat — chip submit → assistant reply', () => {
     );
   });
 });
+
+describe('CaseChat — error and retry', () => {
+  it('renders an error bubble with a Retry button on fetch failure', async () => {
+    const user = userEvent.setup();
+    vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new Error('offline')));
+    vi.stubEnv('VITE_SUPABASE_URL', 'https://example.supabase.co');
+    vi.stubEnv('VITE_SUPABASE_PUBLISHABLE_KEY', 'anon-key');
+
+    render(<CaseChat enriched={enriched} policies={relevantPolicies} />);
+    await user.click(screen.getByRole('button', { name: /what's overdue\?/i }));
+
+    await waitFor(() =>
+      expect(screen.getByText(/couldn't reach the assistant/i)).toBeInTheDocument(),
+    );
+    expect(screen.getByRole('button', { name: /retry/i })).toBeInTheDocument();
+  });
+
+  it('clicking Retry re-sends the same user message and replaces the error on success', async () => {
+    const user = userEvent.setup();
+    const fetchMock = vi
+      .fn()
+      .mockRejectedValueOnce(new Error('offline'))
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ text: 'Here is the answer.' }), { status: 200 }),
+      );
+    vi.stubGlobal('fetch', fetchMock);
+    vi.stubEnv('VITE_SUPABASE_URL', 'https://example.supabase.co');
+    vi.stubEnv('VITE_SUPABASE_PUBLISHABLE_KEY', 'anon-key');
+
+    render(<CaseChat enriched={enriched} policies={relevantPolicies} />);
+    await user.click(screen.getByRole('button', { name: /what's overdue\?/i }));
+
+    await waitFor(() =>
+      expect(screen.getByText(/couldn't reach the assistant/i)).toBeInTheDocument(),
+    );
+
+    await user.click(screen.getByRole('button', { name: /retry/i }));
+
+    await waitFor(() =>
+      expect(screen.getByText('Here is the answer.')).toBeInTheDocument(),
+    );
+    expect(screen.queryByText(/couldn't reach the assistant/i)).not.toBeInTheDocument();
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+});

@@ -39,22 +39,14 @@ export default function CaseChat({ enriched, policies }: Props) {
     listEndRef.current?.scrollIntoView?.({ behavior: 'smooth' });
   }, [messages.length, isLoading]);
 
-  async function submit(content: string) {
-    const trimmed = content.trim();
-    if (!trimmed || isLoading) return;
-
-    setIsExpanded(true);
-    setInput('');
-    const next: ChatMessage[] = [...messages, { role: 'user', content: trimmed }];
-    setMessages(next);
+  async function sendAndAppend(history: ChatMessage[]) {
     setIsLoading(true);
-
     try {
-      const reply = await sendCaseChatMessage(caseContext, next);
-      setMessages([...next, { role: 'assistant', content: reply }]);
+      const reply = await sendCaseChatMessage(caseContext, history);
+      setMessages([...history, { role: 'assistant', content: reply }]);
     } catch {
       setMessages([
-        ...next,
+        ...history,
         {
           role: 'assistant',
           content: "Couldn't reach the assistant. Retry?",
@@ -64,6 +56,26 @@ export default function CaseChat({ enriched, policies }: Props) {
     } finally {
       setIsLoading(false);
     }
+  }
+
+  async function submit(content: string) {
+    const trimmed = content.trim();
+    if (!trimmed || isLoading) return;
+    setIsExpanded(true);
+    setInput('');
+    const next: ChatMessage[] = [...messages, { role: 'user', content: trimmed }];
+    setMessages(next);
+    await sendAndAppend(next);
+  }
+
+  async function retry() {
+    if (isLoading) return;
+    // Drop the trailing error bubble; resend with the user turns that remain.
+    const last = messages[messages.length - 1];
+    if (!last || last.role !== 'assistant' || last.status !== 'error') return;
+    const historyWithoutError = messages.slice(0, -1);
+    setMessages(historyWithoutError);
+    await sendAndAppend(historyWithoutError);
   }
 
   function handleKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
@@ -102,6 +114,18 @@ export default function CaseChat({ enriched, policies }: Props) {
                 }
               >
                 {m.content}
+                {m.status === 'error' && (
+                  <button
+                    type="button"
+                    onClick={() => void retry()}
+                    className="ml-2 underline font-semibold focus:outline-none focus:ring-[3px] focus:ring-[#ffdd00] rounded"
+                    aria-label={`Retry: ${
+                      messages[i - 1]?.content?.slice(0, 40) ?? 'previous message'
+                    }`}
+                  >
+                    Retry
+                  </button>
+                )}
               </div>
             </div>
           ))}
