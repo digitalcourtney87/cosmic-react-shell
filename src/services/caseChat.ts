@@ -6,6 +6,7 @@
 
 import type { ChatMessage, EnrichedCase, PolicyExtract, StructuredCaseContext } from '../types/case';
 import { REFERENCE_DATE } from '../lib/constants';
+import { callOpenAI, OpenAIError } from './openai';
 
 export function buildCaseContext(
   enriched: EnrichedCase,
@@ -63,59 +64,52 @@ export function buildCaseContext(
   };
 }
 
-const EDGE_FUNCTION_PATH = '/functions/v1/case-chat';
 const CHAT_TIMEOUT_MS = 20_000;
 
-function readSupabaseConfig(): { url: string; anonKey: string } {
-  const url = import.meta.env.VITE_SUPABASE_URL;
-  const anonKey =
-    import.meta.env.VITE_SUPABASE_ANON_KEY ??
-    import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
-  if (typeof url !== 'string' || url.length === 0) {
-    throw new Error('VITE_SUPABASE_URL not configured');
-  }
-  if (typeof anonKey !== 'string' || anonKey.length === 0) {
-    throw new Error('VITE_SUPABASE_ANON_KEY / VITE_SUPABASE_PUBLISHABLE_KEY not configured');
-  }
-  return { url: url.replace(/\/+$/, ''), anonKey };
-}
+const SYSTEM_PROMPT = [
+  'You are a decision-support assistant for a UK government caseworker.',
+  'You are given one case record as JSON. Answer the caseworker\'s questions',
+  'using only the information in that record. When asked about dates, compute',
+  'relative to referenceDate, never today\'s real date. If a question cannot',
+  'be answered from the record, say so plainly: "The case record doesn\'t',
+  'show that." Do not invent case references, policy identifiers, dates, or',
+  'evidence items. Do not draft letters, notices, or formal correspondence.',
+  'Do not recommend workflow transitions. Keep answers to 2-5 sentences of',
+  'plain English. Do not use emoji.',
+].join('\n');
 
 export async function sendCaseChatMessage(
   caseContext: StructuredCaseContext,
   messages: ChatMessage[],
 ): Promise<string> {
-  const config = readSupabaseConfig();
+  if (messages.length === 0) {
+    throw new Error('sendCaseChatMessage: messages must not be empty');
+  }
 
-  const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), CHAT_TIMEOUT_MS);
+  const openaiMessages = [
+    { role: 'system' as const, content: SYSTEM_PROMPT },
+    ...messages.map((turn, i) => {
+      if (i === 0 && turn.role === 'user') {
+        return {
+          role: 'user' as const,
+          content:
+            `CASE RECORD:\n${JSON.stringify(caseContext, null, 2)}\n\nQUESTION:\n${turn.content}`,
+        };
+      }
+      return { role: turn.role, content: turn.content };
+    }),
+  ];
 
-  let response: Response;
   try {
-    response = await fetch(`${config.url}${EDGE_FUNCTION_PATH}`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'apikey': config.anonKey,
-        Authorization: `Bearer ${config.anonKey}`,
-      },
-      body: JSON.stringify({
-        caseContext,
-        messages: messages.map(m => ({ role: m.role, content: m.content })),
-      }),
-      signal: controller.signal,
-    });
-  } finally {
-    clearTimeout(timeoutId);
+    return await callOpenAI(
+      openaiMessages,
+      { timeoutMs: CHAT_TIMEOUT_MS, maxTokens: 400, temperature: 0.2 },
+      undefined,
+    );
+  } catch (err) {
+    if (err instanceof OpenAIError) {
+      throw new Error(`Case chat failed: ${err.reason}`);
+    }
+    throw err;
   }
-
-  if (!response.ok) {
-    throw new Error(`Case chat edge function returned ${response.status}`);
-  }
-
-  const body = (await response.json()) as { text?: string };
-  const text = (body.text ?? '').trim();
-  if (!text) {
-    throw new Error('Case chat edge function returned empty text');
-  }
-  return text;
 }
