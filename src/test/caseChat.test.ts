@@ -1,16 +1,18 @@
 /**
  * Case Chat Assistant — service tests.
- * buildCaseContext is a pure derivation over EnrichedCase.
+ * buildCaseContext is a pure derivation; sendCaseChatMessage now goes through
+ * the ai-proxy Supabase Edge Function, mocked via supabase.functions.invoke.
  */
 
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import { buildCaseContext, sendCaseChatMessage } from '../services/caseChat';
 import { getAllEnrichedCases, getPoliciesForCase } from '../services/cases';
 import { REFERENCE_DATE } from '../lib/constants';
+import { supabase } from '../integrations/supabase/client';
 import type { StructuredCaseContext, ChatMessage } from '../types/case';
 
 afterEach(() => {
-  vi.unstubAllGlobals();
+  vi.restoreAllMocks();
 });
 
 describe('buildCaseContext', () => {
@@ -96,84 +98,48 @@ const stubContext: StructuredCaseContext = {
 const stubMessages: ChatMessage[] = [{ role: 'user', content: 'hi' }];
 
 describe('sendCaseChatMessage', () => {
-  it('calls OpenAI and returns the assistant text on 200', async () => {
-    const fetchMock = vi.fn().mockResolvedValue(
-      new Response(JSON.stringify({ choices: [{ message: { content: 'Hello there.' } }] }), {
-        status: 200,
-        headers: { 'Content-Type': 'application/json' },
-      }),
-    );
-    vi.stubGlobal('fetch', fetchMock);
-    vi.stubEnv('VITE_OPENAI_API_KEY', 'sk-test');
+  it('calls ai-proxy and returns the assistant text on success', async () => {
+    const invokeSpy = vi.spyOn(supabase.functions, 'invoke').mockResolvedValueOnce({
+      data: { text: 'Hello there.' },
+      error: null,
+    } as never);
 
     const text = await sendCaseChatMessage(stubContext, stubMessages);
     expect(text).toBe('Hello there.');
 
-    expect(fetchMock).toHaveBeenCalledTimes(1);
-    const [url, init] = fetchMock.mock.calls[0];
-    expect(url).toBe('https://api.openai.com/v1/chat/completions');
-    expect(init.method).toBe('POST');
-    const body = JSON.parse(init.body as string);
-    expect(body.model).toBe('gpt-4o-mini');
+    expect(invokeSpy).toHaveBeenCalledTimes(1);
+    const [name, opts] = invokeSpy.mock.calls[0];
+    expect(name).toBe('ai-proxy');
+    const body = (opts as { body: { messages: { role: string; content: string }[] } }).body;
     expect(Array.isArray(body.messages)).toBe(true);
-    // First message is the system prompt
     expect(body.messages[0].role).toBe('system');
-    // Last user message embeds the case record + the user question
     const last = body.messages[body.messages.length - 1];
     expect(last.role).toBe('user');
     expect(last.content).toContain('CASE-TEST-001');
     expect(last.content).toContain('hi');
   });
 
-  it('throws when OpenAI returns non-200', async () => {
-    vi.stubGlobal(
-      'fetch',
-      vi.fn().mockResolvedValue(
-        new Response(JSON.stringify({ error: 'boom' }), { status: 502 }),
-      ),
-    );
-    vi.stubEnv('VITE_OPENAI_API_KEY', 'sk-test');
-
+  it('throws when ai-proxy returns an error reason', async () => {
+    vi.spyOn(supabase.functions, 'invoke').mockResolvedValueOnce({
+      data: { error: 'boom', reason: 'non-2xx' },
+      error: null,
+    } as never);
     await expect(sendCaseChatMessage(stubContext, stubMessages)).rejects.toThrow();
   });
 
-  it('throws when OpenAI returns 200 with empty text', async () => {
-    vi.stubGlobal(
-      'fetch',
-      vi.fn().mockResolvedValue(
-        new Response(JSON.stringify({ choices: [{ message: { content: '' } }] }), { status: 200 }),
-      ),
-    );
-    vi.stubEnv('VITE_OPENAI_API_KEY', 'sk-test');
-
+  it('throws when ai-proxy returns empty text', async () => {
+    vi.spyOn(supabase.functions, 'invoke').mockResolvedValueOnce({
+      data: { text: '' },
+      error: null,
+    } as never);
     await expect(sendCaseChatMessage(stubContext, stubMessages)).rejects.toThrow();
   });
 
-  it('throws when fetch rejects (network error)', async () => {
-    vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new Error('offline')));
-    vi.stubEnv('VITE_OPENAI_API_KEY', 'sk-test');
-
+  it('throws when invoke errors (network)', async () => {
+    vi.spyOn(supabase.functions, 'invoke').mockResolvedValueOnce({
+      data: null,
+      error: new Error('offline'),
+    } as never);
     await expect(sendCaseChatMessage(stubContext, stubMessages)).rejects.toThrow();
-  });
-
-  it('throws when VITE_OPENAI_API_KEY is missing', async () => {
-    vi.stubEnv('VITE_OPENAI_API_KEY', '');
-    await expect(sendCaseChatMessage(stubContext, stubMessages)).rejects.toThrow();
-  });
-
-  it('aborts and throws when the fetch never resolves within timeout', async () => {
-    vi.useFakeTimers();
-    const fetchMock = vi.fn().mockImplementation((_url, init) => {
-      return new Promise((_resolve, reject) => {
-        init.signal.addEventListener('abort', () => reject(new DOMException('Aborted', 'AbortError')));
-      });
-    });
-    vi.stubGlobal('fetch', fetchMock);
-    vi.stubEnv('VITE_OPENAI_API_KEY', 'sk-test');
-
-    const promise = sendCaseChatMessage(stubContext, stubMessages);
-    vi.advanceTimersByTime(21_000);
-    await expect(promise).rejects.toThrow();
-    vi.useRealTimers();
   });
 });
