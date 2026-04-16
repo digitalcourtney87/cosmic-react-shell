@@ -1,8 +1,61 @@
-the caseworkers job is to do various repetetive tasks on their system. 
-we want to design a system which takes the page indexes from each repetetive task
+# Caseworker Decision Support System — Plan
 
-e.g. review evidence based on some criteria held elsewhere in the file
+## Problem Statement
 
-we want to create a system which allows case workers to merely review urgent cases wthout having to trawl through lists of people
-this should allow them to address more cases, on a priority basis, with visual cues, meaning that they can increase their productivity
-we also need guardrails again missed cases
+Caseworkers perform repetitive, structured tasks that require navigating between
+multiple screens to surface the right data fields, review evidence against policy
+criteria, and reach a decision. This navigation overhead compounds across millions
+of decisions made daily, adding seconds per case that translate into months of
+waiting time for applicants at a national scale.
+
+## Proposed Solution
+
+A unified casework dashboard that:
+
+- Surfaces all relevant data fields for a given task on a single screen,
+  eliminating the need to navigate between pages
+- Automatically navigates caseworkers to the specific pages required for each
+  task type, based on page indexes linked to each action
+- Prioritises cases by urgency, grouping them into clear action segments so
+  caseworkers review the most time-sensitive cases first
+- Displays inline policy criteria alongside the case evidence, so decisions
+  can be made without leaving the view
+- Flags guardrail alerts for cases that have breached waiting thresholds,
+  ensuring no case is missed or deprioritised by accident
+
+
+## Action Segments (based on workflow states)
+
+Cases will be grouped into the following segments:
+
+| Segment           | Description                                                |
+|-------------------|------------------------------------------------------------|
+| Escalated         | Requires immediate attention — referred to senior officer  |
+| Pending Decision  | Assessment complete, decision sign-off required            |
+| Under Review      | Evidence received, active assessment in progress           |
+| Awaiting Evidence | Waiting on applicant — reminder/escalation thresholds apply|
+| Case Created      | New cases requiring initial triage                         |
+
+
+## Guardrails Against Missed Cases
+
+Each case type has defined escalation thresholds (e.g. benefit_review: reminder
+at 28 days, escalation at 56 days). The dashboard will:
+
+- Highlight cases approaching or breaching these thresholds with visual cues
+- Show a count of at-risk cases prominently at the top of the view
+- Prevent caseworkers from filtering out overdue cases entirely
+
+
+## Presentation Angle
+
+There are millions of caseworkers making decisions every day. Even saving 5
+seconds per decision has a significant impact at scale.
+
+Audience prompt: "What are you having for dinner tonight? How long did it take
+you to decide — even for something you think about every day? Those few seconds
+are what make customers wait months for decisions."
+
+This tool compresses those marginal decision moments by presenting caseworkers
+with a clear, prioritised profile — grouped by action segment, with policy
+criteria surfaced inline — so they spend time deciding, not navigating.
