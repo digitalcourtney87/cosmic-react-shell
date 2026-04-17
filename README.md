@@ -6,6 +6,8 @@ A decision-support tool for UK government caseworkers and team leaders. Synthesi
 
 Built for Challenge 3 at the V1 AI Engineering Lab Hackathon, London, April 2026.
 
+> **Live demo:** [cchackathon.netlify.app](https://cchackathon.netlify.app/)
+
 ## Table of contents
 
 - [The problem](#the-problem)
@@ -45,6 +47,8 @@ One screen per case. Every derived signal comes from the same inputs a caseworke
 Everything is derived. Nothing is stored. Reload the page, get the same answer. The AI assistant's *selection* of which case is the priority is fully deterministic; only the human-readable sentence is paraphrased by an LLM, with a deterministic fallback when the API is unavailable.
 
 ## Demo journey
+
+> Try it live at [cchackathon.netlify.app](https://cchackathon.netlify.app/) — no install needed.
 
 1. Open `/`. The heatmap fills the top of the screen, the AI Strategy Assistant sidebar shows Red/Amber/Green triage counts, and the priority insight names a specific case (with the seeded fixture, `CASE-2026-00042` — Jordan Smith) along with a CTA that links straight to the recommended action.
 2. Below the heatmap, the caseload table renders 10 cases sorted risk-descending.
